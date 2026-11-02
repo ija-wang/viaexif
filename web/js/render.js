@@ -208,44 +208,67 @@ function drawClassic(ctx, canvas, image, W, H, opts) {
 }
 
 /* --------------------------------------------------------------------- blur */
+/**
+ * Geometry of the blur template, in canvas pixels.
+ *
+ * The inset keeps the photo's own aspect ratio: its height is derived from its
+ * width, and the canvas grows/shrinks by the fixed text strip at the bottom.
+ * The old code did the opposite — it hardcoded the inset height from `H` and
+ * then cover-cropped the photo into that box, which silently cut ~8% off the
+ * top and bottom of a 3:2 frame (and ~4% off the sides of a 2:3 frame).
+ */
+export function blurLayout(W, H, L) {
+  const padX = W * L.padX;
+  const padTop = W * L.padTop;
+  const textSize = W * L.textFont;
+  const bottomStrip = W * L.line2Baseline + textSize * (1 + L.lineGap + L.photoGapAboveText);
+  const photoW = W - padX * 2;
+  const photoH = Math.max(1, photoW * (H / W));
+  const canvasH = Math.round(padTop + photoH + bottomStrip);
+  return {
+    padX,
+    padTop,
+    photoW,
+    photoH,
+    canvasH,
+    radius: W * L.radius,
+    textSize,
+    line2Y: canvasH - W * L.line2Baseline,
+    line1Y: canvasH - W * L.line2Baseline - textSize * L.lineGap,
+  };
+}
+
 function drawBlur(ctx, canvas, image, W, H, opts) {
   const { spec, brand, fields } = opts;
   const L = spec.layout;
   const C = spec.colors;
+  const g = blurLayout(W, H, L);
 
   canvas.width = W;
-  canvas.height = H;
+  canvas.height = g.canvasH;
 
-  // ---- background: cover-cropped, blurred, slightly darkened
+  // ---- background: the same photo, cover-fitted, blurred, slightly darkened
   ctx.save();
   if ("filter" in ctx) ctx.filter = `blur(${Math.max(6, Math.round(W * L.bgBlur))}px)`;
-  const cover = coverRect(W, H, W, H);
+  const cover = coverRect(W, g.canvasH, W, H);
   ctx.drawImage(image, cover.x, cover.y, cover.w, cover.h);
   ctx.restore();
 
   if ("filter" in ctx) ctx.filter = "none";
   ctx.fillStyle = `rgba(0,0,0,${L.bgDarken})`;
-  ctx.fillRect(0, 0, W, H);
+  ctx.fillRect(0, 0, W, g.canvasH);
 
-  // ---- inset photo
-  const padX = W * L.padX;
-  const padTop = W * L.padTop;
-  const radius = W * L.radius;
-  const textF = font(W * L.textFont, 500);
-  const line2Y = H - W * L.line2Baseline;
-  const line1Y = line2Y - textF.size * L.lineGap;
-  const photoBottom = line1Y - textF.size * L.photoGapAboveText - textF.size;
-  const photoW = W - padX * 2;
-  const photoH = Math.max(40, photoBottom - padTop);
-
+  // ---- inset photo: the whole frame, aspect untouched (no crop)
+  const { padX, padTop, photoW, photoH } = g;
   ctx.save();
-  roundRectPath(ctx, padX, padTop, photoW, photoH, radius);
+  roundRectPath(ctx, padX, padTop, photoW, photoH, g.radius);
   ctx.clip();
-  const inner = coverRect(photoW, photoH, W, H);
-  ctx.drawImage(image, padX + inner.x, padTop + inner.y, inner.w, inner.h);
+  ctx.drawImage(image, padX, padTop, photoW, photoH);
   ctx.restore();
 
   // ---- text line 1: [Brand logo] [Model], centred
+  const textF = font(g.textSize, 500);
+  const { line1Y, line2Y } = g;
   let markH = textF.size * L.brandFont * (opts.brandRatio / 0.3);
   let modelF = font(textF.size, 500, 0.2);
   let paramF = font(textF.size, 500, 0.2);

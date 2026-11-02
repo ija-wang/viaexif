@@ -8,6 +8,7 @@ cp web/js/exif.js tests/.tmp/exif.mjs
 cp web/js/zip.js tests/.tmp/zip.mjs
 cp web/js/formats.js tests/.tmp/formats.mjs
 cp web/js/live.js tests/.tmp/live.mjs
+cp web/js/render.js tests/.tmp/render.mjs
 
 node tests/run.mjs
 

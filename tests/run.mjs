@@ -14,6 +14,7 @@ const { readExif, toFields, formatShutter, formatAperture, guessBrand } = await 
 const { zipStore } = await import(modUrl("zip.mjs"));
 const { sniffBytes, kindFromName, isNative, isLiveVideo, stemOf } = await import(modUrl("formats.mjs"));
 const { parseMov } = await import(modUrl("live.mjs"));
+const { blurLayout } = await import(modUrl("render.mjs"));
 
 let pass = 0;
 let fail = 0;
@@ -101,6 +102,40 @@ console.log("live.parseMov");
   check("still-image-time marker", info.stillTime, 0);
   const notMov = parseMov(new Uint8Array(await readFile(path.join(here, "fixtures", "sample.jpg"))));
   check("jpeg is not a live photo", notMov.isLive, false);
+}
+
+console.log("blurLayout");
+// Layout ratios mirrored from server/config.py SPEC.blur.layout.
+const BLUR_L = {
+  padX: 0.062, padTop: 0.030, radius: 0.018, bgBlur: 0.020, bgDarken: 0.22,
+  textFont: 0.0165, line2Baseline: 0.036, lineGap: 1.350, brandFont: 1.150,
+  brandGap: 0.550, photoGapAboveText: 1.600,
+};
+const ratio4 = (w, h) => Math.round((w / h) * 10000) / 10000;
+{
+  const g = blurLayout(1200, 800, BLUR_L);           // 3:2 landscape
+  check("3:2 inset keeps source ratio", ratio4(g.photoW, g.photoH), 1.5);
+  check("inset spans the padded width", Math.round(g.photoW), 1051);
+  check("canvas grows instead of cropping", g.canvasH, 858);
+  check("canvas keeps padTop above the photo", Math.round(g.padTop), 36);
+}
+{
+  const g = blurLayout(1200, 1800, BLUR_L);          // 2:3 portrait
+  check("2:3 inset keeps source ratio", ratio4(g.photoW, g.photoH), 0.6667);
+  check("portrait canvas follows the photo", g.canvasH, 1734);
+}
+{
+  const g = blurLayout(1200, 1200, BLUR_L);          // square
+  check("1:1 inset keeps source ratio", ratio4(g.photoW, g.photoH), 1);
+}
+{
+  // Whatever the source, the inset must never be cropped: width-driven height.
+  const sizes = [[4000, 3000], [3000, 4000], [8000, 1000], [1000, 3000]];
+  check(
+    "no crop for any aspect",
+    sizes.every(([w, h]) => Math.abs(blurLayout(w, h, BLUR_L).photoW / blurLayout(w, h, BLUR_L).photoH - w / h) < 1e-9),
+    true,
+  );
 }
 
 console.log("zipStore");

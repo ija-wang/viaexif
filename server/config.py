@@ -13,7 +13,7 @@ from .imaging import capabilities
 BASE_DIR = Path(__file__).resolve().parent.parent
 WEB_DIR = BASE_DIR / "web"
 
-APP_VERSION = "1.1.1"
+APP_VERSION = "1.1.2"
 
 
 def _int_env(name: str, default: int) -> int:
@@ -83,9 +83,10 @@ SPEC = {
     },
     "blur": {
         "expandBottom": False,
+        # No bar in this template, and the bottom margin is fixed by the text
+        # strip, so only the logo size is adjustable. The old "barRatio" entry
+        # was a dead control: it rendered a slider that changed nothing.
         "sliders": {
-            "barRatio": {"label": "白条高度", "hint": "该模板不拉伸画布，此项仅影响底部留白",
-                         "min": 0.05, "max": 0.15, "step": 0.01, "default": 0.08},
             "brandRatio": {"label": "品牌 logo 大小", "hint": "默认与型号文字等高，向右放大、向左缩小",
                            "min": 0.15, "max": 0.60, "step": 0.05, "default": 0.30},
         },

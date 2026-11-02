@@ -128,9 +128,16 @@ try {
   await evaluate(`document.querySelector('.tpl[data-tpl="blur"]').click()`);
   await sleep(400);
   check("blur template active", (await evaluate(`document.querySelector('.tpl[data-tpl="blur"]').getAttribute('aria-pressed')`)) === "true");
-  check("blur canvas matches photo height", await evaluate(`(async()=>{
+  check("blur inset keeps the photo ratio", await evaluate(`(async()=>{
+    const { blurLayout } = await import('/js/render.js');
+    const cfg = await (await fetch('/api/config')).json();
     const c = document.getElementById('preview');
-    return Math.abs(c.width / c.height - 1200/800) < 0.02;
+    const g = blurLayout(c.width, Math.round(c.width * 800 / 1200), cfg.spec.blur.layout);
+    return c.height === g.canvasH && Math.abs(g.photoW / g.photoH - 1200/800) < 1e-9;
+  })()`));
+  check("blur canvas is taller than the source (text strip, no crop)", await evaluate(`(async()=>{
+    const c = document.getElementById('preview');
+    return c.height > Math.round(c.width * 800 / 1200);
   })()`));
 
   await send("Emulation.setDeviceMetricsOverride", { width: 1600, height: 1000, deviceScaleFactor: 1, mobile: false });

@@ -60,8 +60,8 @@ docker compose up -d          # 拉 GHCR 上的现成镜像
 纯 docker，不用 compose：
 
 ```bash
-docker build -t viaexif:1.1.1 .
-docker run -d --name viaexif -p 8080:8080 -v "$PWD/data:/data" viaexif:1.1.1
+docker build -t viaexif:1.1.2 .
+docker run -d --name viaexif -p 8080:8080 -v "$PWD/data:/data" viaexif:1.1.2
 ```
 
 ## 部署到 fnOS / NAS
@@ -76,7 +76,7 @@ ssh ija@192.168.50.222 "sudo bash /home/ija/viaexif/deploy/build.sh status"
 
 `pull` 模式：`docker pull ghcr.io/ija-wang/viaexif:latest`（失败自动换 `ghcr.1ms.run` 前缀）→ `compose up -d` → 轮询健康检查 → 打印镜像与访问地址。
 
-想从源码构建（NAS 上已同步源码）就把 `pull` 去掉，`up` 模式会 `docker build -t viaexif:1.1.1`，失败自动回退阿里云基础镜像。
+想从源码构建（NAS 上已同步源码）就把 `pull` 去掉，`up` 模式会 `docker build -t viaexif:1.1.2`，失败自动回退阿里云基础镜像。
 
 > 用 `http://192.168.x.x:端口` 直接访问就行，不必上 HTTPS。内网明文 HTTP 属于**非安全上下文**，
 > 页面里所有依赖它的 API 都有回退（`crypto.randomUUID` → `getRandomValues`，`navigator.clipboard` → `execCommand`），
@@ -85,7 +85,7 @@ ssh ija@192.168.50.222 "sudo bash /home/ija/viaexif/deploy/build.sh status"
 国内网络备选（直连 Docker Hub 超时时手动指定基础镜像）：
 
 ```bash
-sudo docker build -t viaexif:1.1.1 \
+sudo docker build -t viaexif:1.1.2 \
   --build-arg BASE_IMAGE=registry.cn-hangzhou.aliyuncs.com/library/python:3.12-slim .
 ```
 
@@ -96,9 +96,9 @@ sudo docker build -t viaexif:1.1.1 \
 在任意已构建成功的机器上：
 
 ```bash
-docker save viaexif:1.1.1 | gzip > viaexif-1.1.1.tar.gz   # 约 160MB
-scp viaexif-1.1.1.tar.gz ija@192.168.50.222:/home/ija/
-ssh -t ija@192.168.50.222 "gunzip -c /home/ija/viaexif-1.1.1.tar.gz | sudo docker load"
+docker save viaexif:1.1.2 | gzip > viaexif-1.1.2.tar.gz   # 约 160MB
+scp viaexif-1.1.2.tar.gz ija@192.168.50.222:/home/ija/
+ssh -t ija@192.168.50.222 "gunzip -c /home/ija/viaexif-1.1.2.tar.gz | sudo docker load"
 ```
 
 ### 直接拉已发布的镜像
@@ -191,6 +191,7 @@ BASE_URL=http://127.0.0.1:8080 node tests/e2e.mjs
 - **单一渲染引擎**：预览、单张下载、批量导出、分享全部走 `render.js`，不存在「预览好看导出崩」。
 - **配置单源**：所有版式比例只在 `server/config.py` 定义一次，前端通过 `/api/config` 获取，避免两端漂移。
 - **内存安全**：预览用 ≤1400px 的缩略位图；导出时才解码原图，用完 `close()`；批量逐张串行。
+- **照片比例零改动**：经典模板把白条接在照片下方（画布竖向扩张），模糊模板的内嵌图宽度固定、高度按原图宽高比换算，画布随之伸缩。两个模板都不裁切、不拉伸照片——3:2 进去还是 3:2，2:3 也一样。
 - **文本自适应**：机型/参数过长时按可用宽度降档字号（下限 62%），先排右侧再给左侧分配剩余宽度。
 - **品牌画的是 logo 图片**：从 EXIF 的 Make/Model 识别品牌后，把 `web/assets/brands/<key>.svg` 画到水印上。单色 logo（黑/灰）在深色模板上自动重绘为白色，彩色 logo（Canon 红、Nikon 黄）保留原色。
 - **logo 视觉高度统一**：每个 SVG 的 viewBox 都裁到墨迹外框（`tools/normalize-logos.mjs`），因此「高度」就是「最高的那一点墨」，不存在某个品牌自带留白导致看着偏小。经典模板下 logo 高度恒等于白条高度的 **1/3**（`brandFont = 0.3333`），宽度按各自宽高比等比缩放；右侧块超过画布 58% 时整块等比降档，不会挤压参数文字。
