@@ -7,7 +7,11 @@ JPG / PNG / WEBP 全程在浏览器 Canvas 里处理，原图不出设备；**HE
 ![经典模板](docs/assets/screenshot-classic.png)
 
 两种模板（经典 / 模糊）、32 个品牌 logo（全部为矢量图）、6 个参数可改、两个比例滑杆、批量 ZIP 导出、可分享链接；支持 Apple 实况照片（HEIC + MOV 自动配对）、相机 RAW 直读、HEIC 导出。
-功能拆解与版式规格见 **[docs/distillation.md](docs/distillation.md)**。
+功能拆解与版式规格见 **[docs/distillation.md](docs/distillation.md)**，镜像发布与飞牛 NAS 安装见 **[docs/publishing.md](docs/publishing.md)**。
+
+```bash
+docker pull ghcr.io/ija-wang/viaexif:latest
+```
 
 ---
 
@@ -15,7 +19,8 @@ JPG / PNG / WEBP 全程在浏览器 Canvas 里处理，原图不出设备；**HE
 
 ```
 .
-├── Dockerfile / docker-compose.yml
+├── Dockerfile / docker-compose.yml / LICENSE
+├── .github/workflows/docker.yml   多架构构建 → GHCR（+Docker Hub）
 ├── server/            FastAPI：静态托管 + /api/config + /api/share + 相机格式解码
 │   ├── config.py      唯一配置源（模板、版式比例、品牌表、输入格式）
 │   ├── imaging.py     HEIC/AVIF/RAW 嗅探与解码、EXIF 提取、帧缓存
@@ -28,14 +33,15 @@ JPG / PNG / WEBP 全程在浏览器 Canvas 里处理，原图不出设备；**HE
 │       ├── exif.js    TIFF/EXIF 解析（JPEG/PNG/WEBP）
 │       ├── formats.js 魔数嗅探：判断该走浏览器还是服务端
 │       ├── live.js    实况照片 MOV 解析（content identifier）
-│       ├── motion.js  入场 / 磁吸 / 数字滚动等动效helper
+│       ├── motion.js  入场 / 磁吸 / 数字滚动等动效 helper
 │       ├── render.js  Canvas 渲染（经典 / 模糊）
 │       ├── zip.js     内置 store-only ZIP 打包
 │       └── app.js     交互编排
 ├── deploy/
 │   └── build.sh       一键构建/启动/日志/清理（自动回退国内镜像站）
+├── tools/             logo 归一化、CDP 截图、端到端探针
 ├── tests/             单测 + CDP 端到端
-└── docs/              蒸馏报告与截图
+└── docs/              蒸馏报告、发布说明、截图
 ```
 
 代码规模：Python 约 1000 行 / 前端 JS 约 1920 行 / CSS 约 810 行 / 测试约 820 行，另有 34 个 SVG 资源（206 KB）。
@@ -87,6 +93,18 @@ docker save viaexif:1.1.0 | gzip > viaexif-1.1.0.tar.gz   # 约 160MB
 scp viaexif-1.1.0.tar.gz ija@192.168.50.222:/home/ija/
 ssh -t ija@192.168.50.222 "gunzip -c /home/ija/viaexif-1.1.0.tar.gz | sudo docker load"
 ```
+
+### 直接拉已发布的镜像
+
+`main` 分支和 `v*` 标签会触发 CI 构建并推 GHCR：
+
+```bash
+docker run -d --name viaexif -p 8080:8080 -v viaexif-data:/data \
+  ghcr.io/ija-wang/viaexif:latest
+```
+
+飞牛 / 群晖的「镜像仓库」搜索框查的是 Docker Hub 公开索引，而 NAS 上 `hub.docker.com` 常常不可达，
+所以别指望搜出来 —— 用「拉取镜像」直接填完整地址即可，细节见 [docs/publishing.md](docs/publishing.md)。
 
 ## 本地开发（不用 Docker）
 
