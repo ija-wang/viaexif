@@ -39,17 +39,31 @@ function fitFont(ctx, text, base, maxWidth, minScale = 0.62) {
 // repainted in the template text colour, otherwise they disappear.
 let scratch = null;
 
+/**
+ * The shared scratch canvas, sized *exactly* to the mark being tinted.
+ *
+ * It used to grow-only and clear just the current mark's box. A previous,
+ * wider mark therefore stayed alive to the right of that box, and because
+ * `drawImage` samples bilinearly the destination's last pixel column reaches
+ * one texel past the source rect — so the leftovers came back as a 1px grey
+ * rule glued to the mark's right edge. Only the preview showed it: the preview
+ * renders at 1200px wide (mark ≈155px, so the box is small) while the export
+ * renders full size and its clear happens to cover whatever was left.
+ *
+ * Resizing resets the bitmap, so nothing can outlive the mark it belonged to.
+ */
 function scratchOf(w, h) {
+  const cw = Math.max(1, Math.ceil(w));
+  const ch = Math.max(1, Math.ceil(h));
   if (!scratch) scratch = document.createElement("canvas");
-  const needW = Math.ceil(w), needH = Math.ceil(h);
-  if (scratch.width < needW || scratch.height < needH) {
-    scratch.width = Math.max(scratch.width, needW);
-    scratch.height = Math.max(scratch.height, needH);
+  if (scratch.width !== cw || scratch.height !== ch) {
+    scratch.width = cw;
+    scratch.height = ch;
   }
   const c = scratch.getContext("2d");
   c.setTransform(1, 0, 0, 1, 0, 0);
   c.globalCompositeOperation = "source-over";
-  c.clearRect(0, 0, needW, needH);
+  c.clearRect(0, 0, cw, ch);
   return c;
 }
 
@@ -210,10 +224,11 @@ function drawClassic(ctx, canvas, image, W, H, opts) {
   const padX = W * L.barPadX;
   const params = fields.params;
   const gap = barH * L.gap;
-  // The rule between the brand mark and the params. It is a slider ratio of W
-  // and defaults to 0: the 1px rule sits right beside the logo, so at watermark
-  // size it read as a stray line stuck to the mark rather than a separator.
-  const divW = opts.dividerW != null ? W * opts.dividerW : Math.max(1, barH * L.dividerW);
+  // The rule between the brand mark and the params: a slider ratio of W, 2px at
+  // the 1200px reference width. It is deliberately not a hairline — at 1px the
+  // stroke lands half-on-half-off a pixel column, greys itself out, and reads as
+  // a smudge stuck to the mark instead of a separator.
+  const divW = opts.dividerW != null ? W * opts.dividerW : W * (L.dividerW || 2 / 1200);
 
   // ---- 1) size the right block first, capped at 58% of the canvas width
   let paramF = font(barH * L.paramFont, 500);

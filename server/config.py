@@ -13,7 +13,7 @@ from .imaging import capabilities
 BASE_DIR = Path(__file__).resolve().parent.parent
 WEB_DIR = BASE_DIR / "web"
 
-APP_VERSION = "1.1.7"
+APP_VERSION = "1.1.8"
 
 
 def _int_env(name: str, default: int) -> int:
@@ -61,11 +61,13 @@ SPEC = {
                          "min": 0.05, "max": 0.15, "step": 0.01, "default": 0.08},
             "brandRatio": {"label": "品牌 logo 大小", "hint": "默认等于白条高度的 1/3，向右放大、向左缩小",
                            "min": 0.15, "max": 0.60, "step": 0.05, "default": 0.30},
-            # 品牌 logo 与参数之间的竖线。默认 0（不画）：它紧挨着 logo，很容易
-            # 被误认成 logo 自带的杂线。值按图片宽度比例存，界面按 1200px 宽显示。
+            # 品牌 logo 与参数之间的竖线，按图片宽度比例存、界面按 1200px 宽显示。
+            # 默认 2px：1px 太细，落在半像素上会变成一条灰蒙蒙的杂线，看起来像
+            # logo 没抠干净；2px 才是「一根线」而不是「一点脏」。0 = 不画。
+            # 步长正好 1px@1200，所以滑杆上每一格都是一个整数像素。
             "dividerW": {"label": "分隔线", "unit": "px", "ref": 1200,
-                         "hint": "品牌 logo 与参数之间竖线的粗细，0 = 不画（默认）；数值按 1200px 宽基准换算",
-                         "min": 0, "max": 0.004, "step": 0.0005, "default": 0},
+                         "hint": "品牌 logo 与参数之间竖线的粗细，默认 2px；0 = 不画。数值按 1200px 宽基准换算",
+                         "min": 0, "max": 6 / 1200, "step": 1 / 1200, "default": 2 / 1200},
         },
         "layout": {
             "barPadX": 0.020,
@@ -76,7 +78,7 @@ SPEC = {
             "dateBaseline": 0.820,   # × barH from bar top
             "brandFont": 0.3333,     # × barH = 1/3 of the bar, scaled by brandRatio/0.30
             "gap": 0.130,            # × barH
-            "dividerW": 0.012,       # × barH, fallback when the slider is absent
+            "dividerW": 0.001667,    # × W, fallback when the slider is absent (= 2px@1200)
             "dividerH": 0.460,       # × barH
         },
         "colors": {

@@ -150,6 +150,49 @@ try {
   check("every brand canvas is the same height", brandAudit.notUniform.length === 0, brandAudit.notUniform.join("; "));
   check("no brand ink touches the canvas edge", brandAudit.bleed.length === 0, brandAudit.bleed.join(","));
 
+  console.log("render reuse");
+  // Tinted marks go through one shared scratch canvas. It used to only *grow*
+  // and clear the current mark's box, so a previous, wider mark stayed alive to
+  // the right of that box — and drawImage samples bilinearly, so the last
+  // destination column reached one texel into it. The preview got a 1px grey
+  // rule glued to the mark; the export didn't, because at export size the clear
+  // happened to cover the leftovers. Same input, same pixels, always.
+  const reuse = await evaluate(`(async () => {
+    const cfg = await (await fetch('/api/config')).json();
+    // A fresh module instance per URL: same code, its own scratch canvas.
+    const shared = await import('/js/render.js');
+    const virgin = await import('/js/render.js?fresh=' + Date.now());
+    const spec = cfg.spec.classic;
+    const byKey = (k) => cfg.brands.find((b) => b.key === k);
+    const load = (src) => new Promise((res, rej) => {
+      const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error(src)); i.src = src;
+    });
+    const photo = document.createElement('canvas');
+    photo.width = 1200; photo.height = 800;
+    const pc = photo.getContext('2d');
+    const g = pc.createLinearGradient(0, 0, 1200, 800);
+    g.addColorStop(0, '#20313f'); g.addColorStop(1, '#8f6b4a');
+    pc.fillStyle = g; pc.fillRect(0, 0, 1200, 800);
+
+    const wide = byKey('gopro');
+    const narrow = byKey('lumix');
+    const wideImg = await load('/assets/brands/' + wide.logo);
+    const narrowImg = await load('/assets/brands/' + narrow.logo);
+    const draw = (mod, c, brand, img) => mod.render(c, photo, {
+      template: 'classic', spec, brand, logoImg: img,
+      fields: { model: 'X-T4', shotAt: '2024-05-16 12:33', params: '53mm f/3.2 1/5800s ISO640' },
+      barRatio: 0.08, brandRatio: 0.3, dividerW: 2 / 1200,
+    });
+
+    const dirty = document.createElement('canvas');
+    draw(shared, dirty, wide, wideImg);         // scratch holds a ~214px-wide mark
+    draw(shared, dirty, narrow, narrowImg);     // ...and a ~155px one lands on top
+    const clean = document.createElement('canvas');
+    draw(virgin, clean, narrow, narrowImg);     // same mark, no history at all
+    return dirty.toDataURL() === clean.toDataURL();
+  })()`);
+  check("a mark renders the same with and without history", reuse === true, String(reuse));
+
   await send("Emulation.setDeviceMetricsOverride", { width: 1600, height: 1000, deviceScaleFactor: 1, mobile: false });
   const homeShot = await send("Page.captureScreenshot", { format: "png" });
   await writeFile(path.join(shot, "ui-home.png"), Buffer.from(homeShot.data, "base64"));
@@ -253,22 +296,26 @@ try {
   check("classic bottom-left is the white bar", classicPix[0] > 245 && classicPix[1] > 245 && classicPix[2] > 245, JSON.stringify(classicPix));
 
   // The rule between logo and params used to be hard-wired at 1px, which read as
-  // a stray line stuck to the brand mark. It is now a slider that defaults to 0
-  // — and it has to *do* something, or it is another dead control.
+  // a stray line stuck to the brand mark. A 1px rule lands half-on/half-off a
+  // pixel column and greys itself out; 2px is the smallest width that reads as a
+  // separator, so that is the default, and 0 still means "don't draw it".
   const divider = await evaluate(`(async () => {
     const s = document.getElementById('s-dividerW');
     const c = document.getElementById('preview');
     const label = document.getElementById('v-dividerW').textContent;
     const settle = () => new Promise((r) => setTimeout(r, 320));
-    s.value = 0; s.dispatchEvent(new Event('input')); await settle();
-    const off = c.toDataURL();
-    s.value = 0.004; s.dispatchEvent(new Event('input')); await settle();
-    const on = c.toDataURL();
-    s.value = 0; s.dispatchEvent(new Event('input')); await settle();
-    return { label, differs: off !== on };
+    const token = async (v) => {
+      s.value = v; s.dispatchEvent(new Event('input')); await settle(); return c.toDataURL();
+    };
+    const on = c.toDataURL();               // as loaded, slider untouched
+    const off = await token(0);             // 0 = don't draw it
+    const thick = await token(0.005);       // 6px at the 1200px reference
+    await token(0.0016666666666666668);     // back to the 2px default
+    return { label, defaultOn: on !== off, thickDiffers: thick !== on };
   })()`);
-  check("divider slider defaults to 0px", divider.label === "0px", divider.label);
-  check("divider slider actually draws the rule", divider.differs, String(divider.differs));
+  check("divider slider defaults to 2px", divider.label === "2px", divider.label);
+  check("divider is drawn at the default", divider.defaultOn, String(divider.defaultOn));
+  check("divider slider changes the rule", divider.thickDiffers, String(divider.thickDiffers));
 
   const metrics = await evaluate(`({
     dpr: window.devicePixelRatio,
