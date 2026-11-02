@@ -13,7 +13,7 @@ from .imaging import capabilities
 BASE_DIR = Path(__file__).resolve().parent.parent
 WEB_DIR = BASE_DIR / "web"
 
-APP_VERSION = "1.1.3"
+APP_VERSION = "1.1.4"
 
 
 def _int_env(name: str, default: int) -> int:
@@ -136,7 +136,7 @@ FIELDS = [
 # 商标归各品牌所有，此处仅用于标识照片的拍摄设备。
 BRANDS = [
     {"key": "canon", "name": "Canon", "color": "#CC2229", "logo": "canon.svg", "aspect": 4.8155, "tint": False},
-    {"key": "nikon", "name": "Nikon", "color": "#FADF3C", "logo": "nikon.svg", "aspect": 1.0, "tint": False},
+    {"key": "nikon", "name": "Nikon", "color": "#FADF3C", "logo": "nikon.svg", "aspect": 3.5871, "tint": True},
     {"key": "sony", "name": "Sony", "color": "#111111", "logo": "sony.svg", "aspect": 5.6799, "tint": True},
     {"key": "fujifilm", "name": "Fujifilm", "color": "#ED1A3A", "logo": "fujifilm.svg", "aspect": 6.009, "tint": True},
     {"key": "leica", "name": "Leica", "color": "#E20613", "logo": "leica.svg", "aspect": 1.0, "tint": False},
@@ -159,7 +159,7 @@ BRANDS = [
     {"key": "oppo", "name": "OPPO", "color": "#1D7A46", "logo": "oppo.svg", "aspect": 4.1787, "tint": True},
     {"key": "vivo", "name": "vivo", "color": "#415FFF", "logo": "vivo.svg", "aspect": 3.5985, "tint": False},
     {"key": "oneplus", "name": "OnePlus", "color": "#EB0028", "logo": "oneplus.svg", "aspect": 1.0, "tint": False},
-    {"key": "realme", "name": "realme", "color": "#F5C518", "logo": "realme.svg", "aspect": 3.3333, "tint": False},
+    {"key": "realme", "name": "realme", "color": "#F5C518", "logo": "realme.svg", "aspect": 4.4369, "tint": True},
     {"key": "meizu", "name": "Meizu", "color": "#00A9E0", "logo": "meizu.svg", "aspect": 5.5688, "tint": False},
     {"key": "nubia", "name": "nubia", "color": "#E4001F", "logo": "nubia.svg", "aspect": 3.8019, "tint": False},
     {"key": "zte", "name": "ZTE", "color": "#0A4EA2", "logo": "zte.svg", "aspect": 2.0693, "tint": False},

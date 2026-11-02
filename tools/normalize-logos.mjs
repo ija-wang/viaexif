@@ -108,6 +108,12 @@ const PAGE_JS = String.raw`
     const [, , vbW, vbH] = vb;
 
     // ---- 1) drop white shapes that cover (almost) the whole canvas
+    // Only white/blank slabs are removed. A *coloured* full-canvas backdrop
+    // has to be judged by a human: for most brands it is a bug (Nikon and
+    // realme both shipped a yellow slab that painted a block behind the mark),
+    // but Xiaomi's orange squircle is the real logo. tests/e2e.mjs guards the
+    // result with a pixel-coverage check, which is the only reliable test —
+    // bounding boxes are useless once the viewBox has been trimmed to the ink.
     const removed = [];
     for (const el of Array.from(root.querySelectorAll("rect,path,polygon,circle,ellipse"))) {
       if (!topLevel(el)) continue;

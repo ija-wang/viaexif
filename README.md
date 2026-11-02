@@ -60,8 +60,8 @@ docker compose up -d          # 拉 GHCR 上的现成镜像
 纯 docker，不用 compose：
 
 ```bash
-docker build -t viaexif:1.1.3 .
-docker run -d --name viaexif -p 8080:8080 -v "$PWD/data:/data" viaexif:1.1.3
+docker build -t viaexif:1.1.4 .
+docker run -d --name viaexif -p 8080:8080 -v "$PWD/data:/data" viaexif:1.1.4
 ```
 
 ## 部署到 fnOS / NAS
@@ -76,7 +76,7 @@ ssh ija@192.168.50.222 "sudo bash /home/ija/viaexif/deploy/build.sh status"
 
 `pull` 模式：`docker pull ghcr.io/ija-wang/viaexif:latest`（失败自动换 `ghcr.1ms.run` 前缀）→ `compose up -d` → 轮询健康检查 → 打印镜像与访问地址。
 
-想从源码构建（NAS 上已同步源码）就把 `pull` 去掉，`up` 模式会 `docker build -t viaexif:1.1.3`，失败自动回退阿里云基础镜像。
+想从源码构建（NAS 上已同步源码）就把 `pull` 去掉，`up` 模式会 `docker build -t viaexif:1.1.4`，失败自动回退阿里云基础镜像。
 
 > 用 `http://192.168.x.x:端口` 直接访问就行，不必上 HTTPS。内网明文 HTTP 属于**非安全上下文**，
 > 页面里所有依赖它的 API 都有回退（`crypto.randomUUID` → `getRandomValues`，`navigator.clipboard` → `execCommand`），
@@ -85,7 +85,7 @@ ssh ija@192.168.50.222 "sudo bash /home/ija/viaexif/deploy/build.sh status"
 国内网络备选（直连 Docker Hub 超时时手动指定基础镜像）：
 
 ```bash
-sudo docker build -t viaexif:1.1.3 \
+sudo docker build -t viaexif:1.1.4 \
   --build-arg BASE_IMAGE=registry.cn-hangzhou.aliyuncs.com/library/python:3.12-slim .
 ```
 
@@ -96,9 +96,9 @@ sudo docker build -t viaexif:1.1.3 \
 在任意已构建成功的机器上：
 
 ```bash
-docker save viaexif:1.1.3 | gzip > viaexif-1.1.3.tar.gz   # 约 160MB
-scp viaexif-1.1.3.tar.gz ija@192.168.50.222:/home/ija/
-ssh -t ija@192.168.50.222 "gunzip -c /home/ija/viaexif-1.1.3.tar.gz | sudo docker load"
+docker save viaexif:1.1.4 | gzip > viaexif-1.1.4.tar.gz   # 约 160MB
+scp viaexif-1.1.4.tar.gz ija@192.168.50.222:/home/ija/
+ssh -t ija@192.168.50.222 "gunzip -c /home/ija/viaexif-1.1.4.tar.gz | sudo docker load"
 ```
 
 ### 直接拉已发布的镜像
@@ -194,6 +194,7 @@ BASE_URL=http://127.0.0.1:8080 node tests/e2e.mjs
 - **照片比例零改动**：经典模板把白条接在照片下方（画布竖向扩张），模糊模板的内嵌图宽度固定、高度按原图宽高比换算，画布随之伸缩。两个模板都不裁切、不拉伸照片——3:2 进去还是 3:2，2:3 也一样。模糊模板的内嵌图默认**直角**：圆角会切掉画幅四角上真实拍到的像素，只有把「圆角」滑杆往右拉才会生效。
 - **文本自适应**：机型/参数过长时按可用宽度降档字号（下限 62%），先排右侧再给左侧分配剩余宽度。
 - **品牌画的是 logo 图片**：从 EXIF 的 Make/Model 识别品牌后，把 `web/assets/brands/<key>.svg` 画到水印上。深色模板上需要换色的 logo 只重绘**中性墨**（黑/灰）为文字色，品牌色一律保留——Fujifilm 的黑字 + 红块因此在深色模板上仍是白字 + 红块。
+- **底板一律剥离**：好几个厂商的 SVG 自带一块铺满画布的**底板**（Nikon、realme 是整块黄色），直接画会在水印上多出一个色块。`tools/normalize-logos.mjs` 会自动删除白色/空白底板，彩色底板则按品牌逐个判断（Xiaomi 的橙色方块、oneplus 的红框是 logo 本体，保留；Nikon、realme 只是底板，已删）。`tests/e2e.mjs` 用像素覆盖率守住这条线：任何 logo 的墨迹占满画布 98% 以上就判为底板并报错。
 - **logo 视觉高度统一**：每个 SVG 的 viewBox 都裁到墨迹外框（`tools/normalize-logos.mjs`），因此「高度」就是「最高的那一点墨」，不存在某个品牌自带留白导致看着偏小。经典模板下 logo 高度恒等于白条高度的 **1/3**（`brandFont = 0.3333`），宽度按各自宽高比等比缩放；右侧块超过画布 58% 时整块等比降档，不会挤压参数文字。
 - **浏览器优先，服务端兜底**：能用 `createImageBitmap` 解的一律本地处理；解不了的才 `POST /api/decode`，返回 token 而不是 base64（60MP RAW 转出的 JPEG 塞进 JSON 会爆）。
 - **解码帧只在内存**：`FrameCache` 15 分钟 TTL + 512MB 上限，不进 `/data`、不进数据库，分享链接的生命周期与它完全无关。

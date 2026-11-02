@@ -71,10 +71,10 @@ token 只显示一次，务必当场复制。
 ### 打版本标签
 
 ```bash
-git tag v1.1.3 && git push origin v1.1.3
+git tag v1.1.4 && git push origin v1.1.4
 ```
 
-`docker/metadata-action` 会把 `v1.1.3` 展开成 `1.1.3`、`1.1`、`latest` 三个 tag。
+`docker/metadata-action` 会把 `v1.1.4` 展开成 `1.1.4`、`1.1`、`latest` 三个 tag。
 
 ### 想同时出 ARM 镜像（群晖 ARM / 树莓派）
 
@@ -166,8 +166,8 @@ sudo docker run -d --name registry -p 5000:5000 \
 把本机构建好的镜像塞进去（在能跑 docker 的机器上）：
 
 ```bash
-docker tag viaexif:1.1.3 192.168.50.222:5000/viaexif:1.1.3
-docker push 192.168.50.222:5000/viaexif:1.1.3
+docker tag viaexif:1.1.4 192.168.50.222:5000/viaexif:1.1.4
+docker push 192.168.50.222:5000/viaexif:1.1.4
 ```
 
 NAS 的 `/etc/docker/daemon.json` 里已有 `insecure-registries`，

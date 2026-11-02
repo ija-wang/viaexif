@@ -98,6 +98,37 @@ try {
   check("brands rendered", (await evaluate(`(async()=>{document.getElementById('brandBtn').click();return document.querySelectorAll('#brandList .opt').length})()`)) >= 30);
   await evaluate(`document.getElementById('brandBtn').click()`);
 
+  console.log("brand assets");
+  // Two ways a logo asset goes wrong without anyone noticing in the UI:
+  // a full-canvas backdrop rect (a slab of colour behind the mark), and a
+  // config aspect that no longer matches the SVG viewBox (a squashed mark).
+  const brandAudit = await evaluate(`(async () => {
+    const cfg = await (await fetch('/api/config')).json();
+    const load = (src) => new Promise((res, rej) => {
+      const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error(src)); i.src = src;
+    });
+    const slabs = [];
+    const skewed = [];
+    for (const b of cfg.brands) {
+      const res = await fetch('/assets/brands/' + b.logo);
+      const vb = (await res.text()).match(/viewBox="([^"]+)"/)[1].trim().split(/[\\s,]+/).map(Number);
+      const real = vb[2] / vb[3];
+      if (Math.abs(real / b.aspect - 1) > 0.02) skewed.push(b.key + ' ' + b.aspect + ' vs ' + real.toFixed(3));
+
+      const img = await load('/assets/brands/' + b.logo);
+      const W = 120, H = Math.max(1, Math.round(W / (b.aspect || 3)));
+      const c = document.createElement('canvas'); c.width = W; c.height = H;
+      c.getContext('2d').drawImage(img, 0, 0, W, H);
+      const d = c.getContext('2d').getImageData(0, 0, W, H).data;
+      let ink = 0;
+      for (let i = 3; i < d.length; i += 4) if (d[i] > 200) ink += 1;
+      if (ink / (W * H) > 0.98) slabs.push(b.key);
+    }
+    return { slabs, skewed };
+  })()`);
+  check("no logo ships a full-canvas backdrop", brandAudit.slabs, []);
+  check("every brand aspect matches its viewBox", brandAudit.skewed, []);
+
   await send("Emulation.setDeviceMetricsOverride", { width: 1600, height: 1000, deviceScaleFactor: 1, mobile: false });
   const homeShot = await send("Page.captureScreenshot", { format: "png" });
   await writeFile(path.join(shot, "ui-home.png"), Buffer.from(homeShot.data, "base64"));
