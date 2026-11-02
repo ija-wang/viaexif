@@ -152,6 +152,12 @@ check("pure black is neutral ink", isNeutralInk(0, 0, 0), true);
 check("light grey is neutral ink", isNeutralInk(200, 200, 200), true);
 check("fujifilm red survives tinting", isNeutralInk(0xed, 0x1a, 0x3a), false);
 check("canon red survives tinting", isNeutralInk(0xcc, 0x22, 0x29), false);
+// Near-black brand inks are the trap: relative saturation reads as 40% colour
+// for Sony's #231815, so the test must go by absolute channel spread down there.
+check("sony near-black ink is neutral", isNeutralInk(0x23, 0x18, 0x15), true);
+check("gopro charcoal ink is neutral", isNeutralInk(0x2c, 0x2c, 0x2c), true);
+check("nikon yellow is not neutral", isNeutralInk(0xff, 0xe1, 0x00), false);
+check("huawei red is not neutral", isNeutralInk(0xc7, 0x1f, 0x1e), false);
 
 console.log("zipStore");
 const payload = new TextEncoder().encode("hello viaexif");

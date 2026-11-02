@@ -75,7 +75,11 @@ export function brandMarkWidth(ctx, brand, h) {
 export function isNeutralInk(r, g, b) {
   const max = Math.max(r, g, b);
   const min = Math.min(r, g, b);
-  return max === 0 || (max - min) / max <= 0.22;
+  if (max === 0) return true;
+  // A *relative* test alone misfires on near-black brand inks: Sony's #231815
+  // is 14/255 apart, which reads as 40% "saturation" while looking black. Use
+  // the absolute channel spread for dark pixels and the relative one otherwise.
+  return max - min <= 24 || (max - min) / max <= 0.22;
 }
 
 /** "#111" / "#111111" -> {r,g,b}; anything else falls back to black. */

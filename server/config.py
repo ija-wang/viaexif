@@ -13,7 +13,7 @@ from .imaging import capabilities
 BASE_DIR = Path(__file__).resolve().parent.parent
 WEB_DIR = BASE_DIR / "web"
 
-APP_VERSION = "1.1.4"
+APP_VERSION = "1.1.5"
 
 
 def _int_env(name: str, default: int) -> int:
@@ -135,38 +135,49 @@ FIELDS = [
 #   color  : 仅用于选择列表色点
 # 商标归各品牌所有，此处仅用于标识照片的拍摄设备。
 BRANDS = [
-    {"key": "canon", "name": "Canon", "color": "#CC2229", "logo": "canon.svg", "aspect": 4.8155, "tint": False},
-    {"key": "nikon", "name": "Nikon", "color": "#FADF3C", "logo": "nikon.svg", "aspect": 3.5871, "tint": True},
-    {"key": "sony", "name": "Sony", "color": "#111111", "logo": "sony.svg", "aspect": 5.6799, "tint": True},
-    {"key": "fujifilm", "name": "Fujifilm", "color": "#ED1A3A", "logo": "fujifilm.svg", "aspect": 6.009, "tint": True},
-    {"key": "leica", "name": "Leica", "color": "#E20613", "logo": "leica.svg", "aspect": 1.0, "tint": False},
-    {"key": "hasselblad", "name": "Hasselblad", "color": "#111111", "logo": "hasselblad.svg", "aspect": 14.9584, "tint": True},
-    {"key": "panasonic", "name": "Panasonic", "color": "#2866AD", "logo": "panasonic.svg", "aspect": 6.7762, "tint": False},
-    {"key": "olympus", "name": "OM System", "color": "#3258A1", "logo": "olympus.svg", "aspect": 3.5978, "tint": False},
-    {"key": "pentax", "name": "Pentax", "color": "#FF0017", "logo": "pentax.svg", "aspect": 5.144, "tint": False},
-    {"key": "ricoh", "name": "Ricoh", "color": "#DA003B", "logo": "ricoh.svg", "aspect": 5.5395, "tint": False},
-    {"key": "sigma", "name": "Sigma", "color": "#111111", "logo": "sigma.svg", "aspect": 4.2502, "tint": True},
-    {"key": "tamron", "name": "Tamron", "color": "#E4002B", "logo": "tamron.svg", "aspect": 6.3711, "tint": False},
-    {"key": "dji", "name": "DJI", "color": "#111111", "logo": "dji.svg", "aspect": 1.731, "tint": True},
-    {"key": "gopro", "name": "GoPro", "color": "#111111", "logo": "gopro.svg", "aspect": 3.5296, "tint": True},
-    {"key": "insta360", "name": "Insta360", "color": "#111111", "logo": "insta360.svg", "aspect": 4.839, "tint": True},
-    {"key": "apple", "name": "Apple", "color": "#111111", "logo": "apple.svg", "aspect": 0.8142, "tint": True},
-    {"key": "samsung", "name": "Samsung", "color": "#1428A0", "logo": "samsung.svg", "aspect": 6.5, "tint": True},
-    {"key": "huawei", "name": "Huawei", "color": "#CE0E2D", "logo": "huawei.svg", "aspect": 0.9981, "tint": False},
-    {"key": "honor", "name": "Honor", "color": "#111111", "logo": "honor.svg", "aspect": 5.2798, "tint": True},
-    {"key": "xiaomi", "name": "Xiaomi", "color": "#FF6900", "logo": "xiaomi.svg", "aspect": 0.9994, "tint": False},
-    {"key": "redmi", "name": "Redmi", "color": "#FF6900", "logo": "redmi.svg", "aspect": 3.4641, "tint": True},
-    {"key": "oppo", "name": "OPPO", "color": "#1D7A46", "logo": "oppo.svg", "aspect": 4.1787, "tint": True},
-    {"key": "vivo", "name": "vivo", "color": "#415FFF", "logo": "vivo.svg", "aspect": 3.5985, "tint": False},
-    {"key": "oneplus", "name": "OnePlus", "color": "#EB0028", "logo": "oneplus.svg", "aspect": 1.0, "tint": False},
-    {"key": "realme", "name": "realme", "color": "#F5C518", "logo": "realme.svg", "aspect": 4.4369, "tint": True},
-    {"key": "meizu", "name": "Meizu", "color": "#00A9E0", "logo": "meizu.svg", "aspect": 5.5688, "tint": False},
-    {"key": "nubia", "name": "nubia", "color": "#E4001F", "logo": "nubia.svg", "aspect": 3.8019, "tint": False},
-    {"key": "zte", "name": "ZTE", "color": "#0A4EA2", "logo": "zte.svg", "aspect": 2.0693, "tint": False},
+    # Marks come from tools/import-brand-svgs.py (the studio's `svg信息.xlsx`).
+    # `aspect` is the trimmed viewBox ratio (tools/normalize-logos.mjs) and must
+    # stay in sync with the file — tests/e2e.mjs fails if it drifts.
+    # `tint` marks carry only dark neutral ink, so on the dark blur template they
+    # would vanish; those are repainted to the template's text colour. Marks that
+    # ship their own two-tone artwork (Nikon's yellow tile, Sigma's disc, Leica's
+    # red dot) are drawn as authored.
+    {"key": "canon", "name": "Canon", "color": "#CE0000", "logo": "canon.svg", "aspect": 4.758, "tint": False},
+    {"key": "nikon", "name": "Nikon", "color": "#FFE100", "logo": "nikon.svg", "aspect": 1.0, "tint": False},
+    {"key": "sony", "name": "Sony", "color": "#231815", "logo": "sony.svg", "aspect": 5.7176, "tint": True},
+    {"key": "fujifilm", "name": "Fujifilm", "color": "#FE0131", "logo": "fujifilm.svg", "aspect": 5.973, "tint": True},
+    {"key": "leica", "name": "Leica", "color": "#D72F29", "logo": "leica.svg", "aspect": 1.0, "tint": False},
+    {"key": "hasselblad", "name": "Hasselblad", "color": "#111111", "logo": "hasselblad.svg", "aspect": 14.4943, "tint": True},
+    {"key": "panasonic", "name": "Panasonic", "color": "#0049AB", "logo": "panasonic.svg", "aspect": 6.532, "tint": False},
+    {"key": "lumix", "name": "Lumix", "color": "#111111", "logo": "lumix.svg", "aspect": 5.1468, "tint": True},
+    {"key": "olympus", "name": "Olympus", "color": "#134C99", "logo": "olympus.svg", "aspect": 8.0273, "tint": False},
+    {"key": "pentax", "name": "Pentax", "color": "#E8380D", "logo": "pentax.svg", "aspect": 5.3158, "tint": False},
+    {"key": "ricoh", "name": "Ricoh", "color": "#DF3232", "logo": "ricoh.svg", "aspect": 5.5409, "tint": False},
+    {"key": "sigma", "name": "Sigma", "color": "#333333", "logo": "sigma.svg", "aspect": 1.0, "tint": False},
+    {"key": "tamron", "name": "Tamron", "color": "#005BAC", "logo": "tamron.svg", "aspect": 6.3958, "tint": False},
+    {"key": "dji", "name": "DJI", "color": "#111111", "logo": "dji.svg", "aspect": 1.6951, "tint": True},
+    {"key": "insta360", "name": "Insta360", "color": "#000000", "logo": "insta360.svg", "aspect": 4.8387, "tint": True},
+    {"key": "gopro", "name": "GoPro", "color": "#2C2C2C", "logo": "gopro.svg", "aspect": 3.1688, "tint": True},
+    {"key": "apple", "name": "Apple", "color": "#272636", "logo": "apple.svg", "aspect": 0.8083, "tint": True},
+    {"key": "samsung", "name": "Samsung", "color": "#000000", "logo": "samsung.svg", "aspect": 6.5163, "tint": True},
+    {"key": "huawei", "name": "Huawei", "color": "#C71F1E", "logo": "huawei.svg", "aspect": 1.0034, "tint": False},
+    {"key": "honor", "name": "Honor", "color": "#555555", "logo": "honor.svg", "aspect": 5.1092, "tint": True},
+    {"key": "xiaomi", "name": "Xiaomi", "color": "#FF4E00", "logo": "xiaomi.svg", "aspect": 1.3889, "tint": False},
+    {"key": "redmi", "name": "Redmi", "color": "#111111", "logo": "redmi.svg", "aspect": 3.2, "tint": True},
+    {"key": "oppo", "name": "OPPO", "color": "#006B33", "logo": "oppo.svg", "aspect": 4.2064, "tint": False},
+    {"key": "vivo", "name": "vivo", "color": "#008CD7", "logo": "vivo.svg", "aspect": 3.5416, "tint": False},
+    {"key": "oneplus", "name": "OnePlus", "color": "#EA0029", "logo": "oneplus.svg", "aspect": 4.441, "tint": False},
+    {"key": "realme", "name": "realme", "color": "#FFC915", "logo": "realme.svg", "aspect": 3.3333, "tint": False},
+    {"key": "meizu", "name": "Meizu", "color": "#1296DB", "logo": "meizu.svg", "aspect": 5.7125, "tint": False},
+    {"key": "nubia", "name": "nubia", "color": "#E90002", "logo": "nubia.svg", "aspect": 3.8994, "tint": False},
+    {"key": "zte", "name": "ZTE", "color": "#008FD5", "logo": "zte.svg", "aspect": 1.5079, "tint": False},
     {"key": "nothing", "name": "Nothing", "color": "#111111", "logo": "nothing.svg", "aspect": 7.5715, "tint": True},
-    {"key": "google", "name": "Google", "color": "#4285F4", "logo": "google.svg", "aspect": 0.98, "tint": False},
+    {"key": "google", "name": "Google", "color": "#4285F4", "logo": "google.svg", "aspect": 0.9995, "tint": False},
     {"key": "motorola", "name": "Motorola", "color": "#111111", "logo": "motorola.svg", "aspect": 1.0021, "tint": True},
-    {"key": "nokia", "name": "Nokia", "color": "#124191", "logo": "nokia.svg", "aspect": 5.933, "tint": False},
+    {"key": "nokia", "name": "Nokia", "color": "#124191", "logo": "nokia.svg", "aspect": 5.9897, "tint": False},
+    {"key": "lenovo", "name": "Lenovo", "color": "#E60012", "logo": "lenovo.svg", "aspect": 4.8449, "tint": False},
+    {"key": "rog", "name": "ROG", "color": "#E50007", "logo": "rog.svg", "aspect": 1.7043, "tint": False},
+    {"key": "casio", "name": "Casio", "color": "#003296", "logo": "casio.svg", "aspect": 5.2842, "tint": False},
 ]
 
 # Make / Model substring -> brand key. Ordered: first hit wins.
@@ -180,11 +191,12 @@ BRAND_HINTS = [
     ("xiaomi", "xiaomi"), ("redmi", "redmi"), ("oppo", "oppo"), ("vivo", "vivo"),
     ("oneplus", "oneplus"), ("realme", "realme"), ("meizu", "meizu"), ("nubia", "nubia"),
     ("zte", "zte"), ("nothing", "nothing"), ("google", "google"),
-    ("motorola", "motorola"), ("nokia", "nokia"),
+    ("motorola", "motorola"), ("nokia", "nokia"), ("lenovo", "lenovo"),
+    ("casio", "casio"), ("rog", "rog"), ("asus", "rog"),
     # model-only hints (camera lines)
     ("eos", "canon"), ("ilce", "sony"), ("ilca", "sony"), ("dsc-", "sony"), ("x-t", "fujifilm"),
     ("x-h", "fujifilm"), ("x100", "fujifilm"), ("x-pro", "fujifilm"), ("gf x", "fujifilm"),
-    ("nikon z", "nikon"), ("dc-", "pentax"), ("gr ii", "ricoh"), ("lumix", "panasonic"),
+    ("nikon z", "nikon"), ("dc-", "pentax"), ("gr ii", "ricoh"), ("lumix", "lumix"),
 ]
 
 EXPORT_FORMATS = [

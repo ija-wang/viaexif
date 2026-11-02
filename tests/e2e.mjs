@@ -126,8 +126,13 @@ try {
     }
     return { slabs, skewed };
   })()`);
-  check("no logo ships a full-canvas backdrop", brandAudit.slabs, []);
-  check("every brand aspect matches its viewBox", brandAudit.skewed, []);
+  // A few marks *are* solid tiles by design (the Nikon and realme yellow
+  // plates are the logo, not a leftover backdrop), so those are expected.
+  // Anything else covering its whole box is a backdrop that slipped in.
+  const SOLID = ["nikon", "realme"];
+  const straySlabs = brandAudit.slabs.filter((k) => !SOLID.includes(k));
+  check("no logo ships a stray full-canvas backdrop", straySlabs.length === 0, straySlabs.join(","));
+  check("every brand aspect matches its viewBox", brandAudit.skewed.length === 0, brandAudit.skewed.join("; "));
 
   await send("Emulation.setDeviceMetricsOverride", { width: 1600, height: 1000, deviceScaleFactor: 1, mobile: false });
   const homeShot = await send("Page.captureScreenshot", { format: "png" });

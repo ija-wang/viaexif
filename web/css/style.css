@@ -732,8 +732,10 @@ input[type="text"]:focus, input[type="search"]:focus {
 .opt .oname { font-size: 12.5px; }
 .ologo { height: 15px; max-width: 90px; object-fit: contain; object-position: left center; flex: 0 0 auto; }
 .ologo.trig { height: 14px; max-width: 96px; }
-/* single-ink marks are black; flip them on the dark theme so they stay visible */
-[data-theme="dark"] .ologo.mono { filter: invert(1); }
+/* single-ink marks are black; flatten them to white on the dark theme so they
+ * stay visible. `invert(1)` alone would also flip brand accents (Fujifilm's red
+ * J came out cyan), so go through a solid silhouette instead. */
+[data-theme="dark"] .ologo.mono { filter: brightness(0) invert(1); }
 
 /* sliders */
 input[type="range"] {
