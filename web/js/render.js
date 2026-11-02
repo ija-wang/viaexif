@@ -64,6 +64,61 @@ export function brandMarkWidth(ctx, brand, h) {
 }
 
 /**
+ * Is this pixel "neutral ink" — i.e. black/grey with no brand hue?
+ *
+ * `tint` brands are marks whose ink should follow the template's text colour,
+ * because a pure black wordmark vanishes on the dark blur template. Some of
+ * them are not monochrome though: Fujifilm's wordmark is black with a red
+ * accent on the F. Flattening everything with `source-in` destroyed that red,
+ * so only neutral (unsaturated) ink is repainted and brand colour survives.
+ */
+export function isNeutralInk(r, g, b) {
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  return max === 0 || (max - min) / max <= 0.22;
+}
+
+/** "#111" / "#111111" -> {r,g,b}; anything else falls back to black. */
+function parseHex(hex) {
+  const s = String(hex || "").trim().replace(/^#/, "");
+  const full = s.length === 3 ? s.replace(/./g, (c) => c + c) : s;
+  const n = Number.parseInt(full, 16);
+  return Number.isFinite(n) && full.length === 6
+    ? { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 }
+    : { r: 0, g: 0, b: 0 };
+}
+
+/**
+ * Repaint a `tint` mark into the scratch canvas: neutral ink takes the text
+ * colour, chromatic ink is left untouched.
+ */
+function tintMark(img, w, h, hex) {
+  const cw = Math.max(1, Math.ceil(w));
+  const ch = Math.max(1, Math.ceil(h));
+  const c = scratchOf(cw, ch);
+  c.drawImage(img, 0, 0, w, h);
+  const { r, g, b } = parseHex(hex);
+  try {
+    const data = c.getImageData(0, 0, cw, ch);
+    const px = data.data;
+    for (let i = 0; i < px.length; i += 4) {
+      if (!px[i + 3] || !isNeutralInk(px[i], px[i + 1], px[i + 2])) continue;
+      px[i] = r;
+      px[i + 1] = g;
+      px[i + 2] = b;
+    }
+    c.putImageData(data, 0, 0);
+  } catch {
+    // Tainted canvas (file:// origin): fall back to a flat silhouette.
+    c.globalCompositeOperation = "source-in";
+    c.fillStyle = hex;
+    c.fillRect(0, 0, cw, ch);
+    c.globalCompositeOperation = "source-over";
+  }
+  return cw;
+}
+
+/**
  * Draw a brand mark `h` px tall. `x` is the anchor: right edge when
  * `align === "right"`, left edge otherwise. Returns the drawn width.
  * Falls back to the brand name when the logo asset or bitmap is missing.
@@ -77,13 +132,8 @@ function drawBrandMark(ctx, opts, x, y, h, align) {
 
   if (logoImg && brand.logo) {
     if (brand.tint) {
-      // repaint the single-ink mark in the template's text colour
-      const c = scratchOf(w, h);
-      c.drawImage(logoImg, 0, 0, w, h);
-      c.globalCompositeOperation = "source-in";
-      c.fillStyle = spec.colors.text;
-      c.fillRect(0, 0, w, h);
-      c.globalCompositeOperation = "source-over";
+      // repaint the neutral ink in the template's text colour, keep brand hues
+      tintMark(logoImg, w, h, spec.colors.text);
       ctx.drawImage(scratch, 0, 0, Math.ceil(w), Math.ceil(h), left, y, w, h);
     } else {
       ctx.drawImage(logoImg, left, y, w, h);
@@ -216,8 +266,12 @@ function drawClassic(ctx, canvas, image, W, H, opts) {
  * The old code did the opposite — it hardcoded the inset height from `H` and
  * then cover-cropped the photo into that box, which silently cut ~8% off the
  * top and bottom of a 3:2 frame (and ~4% off the sides of a 2:3 frame).
+ *
+ * `radiusRatio` is the optional corner-radius slider (ratio of `W`). It
+ * defaults to 0: a rounded corner clips real pixels out of the frame corners,
+ * so it is opt-in rather than baked into the layout.
  */
-export function blurLayout(W, H, L) {
+export function blurLayout(W, H, L, radiusRatio) {
   const padX = W * L.padX;
   const padTop = W * L.padTop;
   const textSize = W * L.textFont;
@@ -225,13 +279,14 @@ export function blurLayout(W, H, L) {
   const photoW = W - padX * 2;
   const photoH = Math.max(1, photoW * (H / W));
   const canvasH = Math.round(padTop + photoH + bottomStrip);
+  const rr = radiusRatio ?? L.radius ?? 0;
   return {
     padX,
     padTop,
     photoW,
     photoH,
     canvasH,
-    radius: W * L.radius,
+    radius: Math.max(0, W * rr),
     textSize,
     line2Y: canvasH - W * L.line2Baseline,
     line1Y: canvasH - W * L.line2Baseline - textSize * L.lineGap,
@@ -242,7 +297,7 @@ function drawBlur(ctx, canvas, image, W, H, opts) {
   const { spec, brand, fields } = opts;
   const L = spec.layout;
   const C = spec.colors;
-  const g = blurLayout(W, H, L);
+  const g = blurLayout(W, H, L, opts.radius);
 
   canvas.width = W;
   canvas.height = g.canvasH;
@@ -258,13 +313,19 @@ function drawBlur(ctx, canvas, image, W, H, opts) {
   ctx.fillStyle = `rgba(0,0,0,${L.bgDarken})`;
   ctx.fillRect(0, 0, W, g.canvasH);
 
-  // ---- inset photo: the whole frame, aspect untouched (no crop)
-  const { padX, padTop, photoW, photoH } = g;
-  ctx.save();
-  roundRectPath(ctx, padX, padTop, photoW, photoH, g.radius);
-  ctx.clip();
-  ctx.drawImage(image, padX, padTop, photoW, photoH);
-  ctx.restore();
+  // ---- inset photo: the whole frame, aspect untouched (no crop).
+  // Corners are square by default — clipping a radius out of the frame throws
+  // away pixels that were actually photographed, so it is an opt-in slider.
+  const { padX, padTop, photoW, photoH, radius } = g;
+  if (radius > 0) {
+    ctx.save();
+    roundRectPath(ctx, padX, padTop, photoW, photoH, radius);
+    ctx.clip();
+    ctx.drawImage(image, padX, padTop, photoW, photoH);
+    ctx.restore();
+  } else {
+    ctx.drawImage(image, padX, padTop, photoW, photoH);
+  }
 
   // ---- text line 1: [Brand logo] [Model], centred
   const textF = font(g.textSize, 500);

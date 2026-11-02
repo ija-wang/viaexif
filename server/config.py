@@ -13,7 +13,7 @@ from .imaging import capabilities
 BASE_DIR = Path(__file__).resolve().parent.parent
 WEB_DIR = BASE_DIR / "web"
 
-APP_VERSION = "1.1.2"
+APP_VERSION = "1.1.3"
 
 
 def _int_env(name: str, default: int) -> int:
@@ -84,16 +84,22 @@ SPEC = {
     "blur": {
         "expandBottom": False,
         # No bar in this template, and the bottom margin is fixed by the text
-        # strip, so only the logo size is adjustable. The old "barRatio" entry
-        # was a dead control: it rendered a slider that changed nothing.
+        # strip, so only the logo size and the (opt-in) corner radius are
+        # adjustable. The old "barRatio" entry was a dead control: it rendered
+        # a slider that changed nothing.
         "sliders": {
             "brandRatio": {"label": "品牌 logo 大小", "hint": "默认与型号文字等高，向右放大、向左缩小",
                            "min": 0.15, "max": 0.60, "step": 0.05, "default": 0.30},
+            # 圆角会裁掉照片四角上的画面信息，所以默认 0（直角）。
+            # 值按图片宽度比例存，界面按 1200px 宽基准显示成 px，导出时等比放大。
+            "radius": {"label": "圆角", "unit": "px", "ref": 1200,
+                       "hint": "照片四角的圆角半径，0 = 直角（不裁掉任何画面）；数值按 1200px 宽基准换算，导出时随图片宽度等比缩放",
+                       "min": 0, "max": 0.05, "step": 0.001, "default": 0},
         },
         "layout": {
             "padX": 0.062,        # × W
             "padTop": 0.030,      # × W
-            "radius": 0.018,      # × W
+            "radius": 0.0,        # × W, fallback only — the slider wins
             "bgBlur": 0.020,      # × W, gaussian sigma
             "bgDarken": 0.22,     # 0..1 alpha of black overlay
             "textFont": 0.0165,   # × W

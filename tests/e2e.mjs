@@ -140,6 +140,35 @@ try {
     return c.height > Math.round(c.width * 800 / 1200);
   })()`));
 
+  console.log("corner radius");
+  check("radius slider defaults to 0px", (await evaluate(`document.getElementById('v-radius').textContent`)) === "0px");
+  // px at the photo's top-left inset corner: sharp photo when r=0, blurred
+  // backdrop once the corner is clipped away.
+  const cornerPix = `(async () => {
+    window.__cfg = window.__cfg || await (await fetch('/api/config')).json();
+    const c = document.getElementById('preview');
+    const L = window.__cfg.spec.blur.layout;
+    const x = Math.round(c.width * L.padX) + 2;
+    const y = Math.round(c.width * L.padTop) + 2;
+    const d = c.getContext('2d').getImageData(x, y, 1, 1).data;
+    return [d[0], d[1], d[2]];
+  })()`;
+  const sharpCorner = await evaluate(cornerPix);
+  const setRadius = (v) => evaluate(
+    "(() => { const s = document.getElementById('s-radius');"
+    + ` s.value = ${Number(v)}; s.dispatchEvent(new Event('input')); })()`);
+  await setRadius(0.05);
+  await sleep(320);
+  check("radius label follows the slider", (await evaluate(`document.getElementById('v-radius').textContent`)) === "60px");
+  const roundedCorner = await evaluate(cornerPix);
+  const delta = sharpCorner.reduce((a, v, i) => a + Math.abs(v - roundedCorner[i]), 0);
+  check("rounding actually clips the photo corner", delta > 12, `${JSON.stringify(sharpCorner)} -> ${JSON.stringify(roundedCorner)}`);
+  await setRadius(0);
+  await sleep(320);
+  const backCorner = await evaluate(cornerPix);
+  const backDelta = backCorner.reduce((a, v, i) => a + Math.abs(v - sharpCorner[i]), 0);
+  check("radius back to 0 restores every corner pixel", backDelta === 0, `${backDelta} px off`);
+
   await send("Emulation.setDeviceMetricsOverride", { width: 1600, height: 1000, deviceScaleFactor: 1, mobile: false });
   const blurShot = await send("Page.captureScreenshot", { format: "png" });
   await writeFile(path.join(shot, "ui-blur.png"), Buffer.from(blurShot.data, "base64"));

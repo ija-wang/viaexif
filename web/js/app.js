@@ -297,6 +297,11 @@ function syncFieldsToInputs() {
 }
 
 /* -------------------------------------------------------------- sliders */
+/** Every slider value is forwarded to the renderer under its own key. */
+function sliderOpts() {
+  return { ...state.sliders[state.template] };
+}
+
 function buildSliders() {
   const box = el("sliderBox");
   box.innerHTML = "";
@@ -306,7 +311,7 @@ function buildSliders() {
     block.className = "slider-block";
     block.innerHTML = `
       <div class="field" style="margin-bottom:6px">
-        <label for="s-${key}">${s.label} <span class="val" id="v-${key}">${pct(state.sliders[state.template][key])}</span></label>
+        <label for="s-${key}">${s.label} <span class="val" id="v-${key}">${sliderText(s, state.sliders[state.template][key])}</span></label>
       </div>
       <input type="range" id="s-${key}" min="${s.min}" max="${s.max}" step="${s.step}" value="${state.sliders[state.template][key]}" />
       <p class="hint">${s.hint}</p>`;
@@ -314,7 +319,7 @@ function buildSliders() {
     paintRange(range);
     range.addEventListener("input", () => {
       state.sliders[state.template][key] = Number(range.value);
-      el(`v-${key}`).textContent = pct(range.value);
+      el(`v-${key}`).textContent = sliderText(s, range.value);
       paintRange(range);
       schedulePreview();
     });
@@ -323,6 +328,16 @@ function buildSliders() {
 }
 
 const pct = (v) => `${Math.round(Number(v) * 100)}%`;
+
+/**
+ * Sliders are stored as ratios so exports scale with the image. `unit: "px"`
+ * sliders are shown in pixels on a nominal 1200px-wide reference instead, which
+ * is what "0px 圆角" means to a user.
+ */
+function sliderText(s, v) {
+  if (s.unit === "px") return `${Math.round(Number(v) * (s.ref || 1200))}px`;
+  return pct(v);
+}
 
 /** Colour the filled part of a range track (pure CSS var, no gradient math). */
 function paintRange(input) {
@@ -749,8 +764,7 @@ function renderPreview() {
       brand: currentBrand(),
       logoImg: logoFor(currentBrand()),
       fields: { ...file.fields, params: paramLine(file.fields) },
-      barRatio: state.sliders[state.template].barRatio,
-      brandRatio: state.sliders[state.template].brandRatio,
+      ...sliderOpts(),
     });
   } catch (err) {
     console.error(err);
@@ -771,8 +785,7 @@ async function composeActive() {
       brand: currentBrand(),
       logoImg: logoFor(currentBrand()),
       fields: { ...file.fields, params: paramLine(file.fields) },
-      barRatio: state.sliders[state.template].barRatio,
-      brandRatio: state.sliders[state.template].brandRatio,
+      ...sliderOpts(),
     });
     const out = await toOutputBlob(canvas);
     canvas.width = canvas.height = 0;
@@ -865,10 +878,9 @@ async function exportZip() {
           template: state.template,
           spec: state.cfg.spec[state.template],
           brand: brandOf(file),
-        logoImg: logoFor(brandOf(file)),
+          logoImg: logoFor(brandOf(file)),
           fields: { ...file.fields, params: paramLine(file.fields) },
-          barRatio: state.sliders[state.template].barRatio,
-          brandRatio: state.sliders[state.template].brandRatio,
+          ...sliderOpts(),
         });
         const out = await toOutputBlob(canvas);
         canvas.width = canvas.height = 0;
@@ -916,8 +928,7 @@ async function exportLive() {
         brand: currentBrand(),
         logoImg: logoFor(currentBrand()),
         fields: { ...file.fields, params: paramLine(file.fields) },
-        barRatio: state.sliders[state.template].barRatio,
-        brandRatio: state.sliders[state.template].brandRatio,
+        ...sliderOpts(),
       });
       const out = await toBlob(canvas, "image/jpeg", state.quality);
       canvas.width = canvas.height = 0;

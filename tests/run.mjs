@@ -14,7 +14,7 @@ const { readExif, toFields, formatShutter, formatAperture, guessBrand } = await 
 const { zipStore } = await import(modUrl("zip.mjs"));
 const { sniffBytes, kindFromName, isNative, isLiveVideo, stemOf } = await import(modUrl("formats.mjs"));
 const { parseMov } = await import(modUrl("live.mjs"));
-const { blurLayout } = await import(modUrl("render.mjs"));
+const { blurLayout, isNeutralInk } = await import(modUrl("render.mjs"));
 
 let pass = 0;
 let fail = 0;
@@ -107,7 +107,7 @@ console.log("live.parseMov");
 console.log("blurLayout");
 // Layout ratios mirrored from server/config.py SPEC.blur.layout.
 const BLUR_L = {
-  padX: 0.062, padTop: 0.030, radius: 0.018, bgBlur: 0.020, bgDarken: 0.22,
+  padX: 0.062, padTop: 0.030, radius: 0, bgBlur: 0.020, bgDarken: 0.22,
   textFont: 0.0165, line2Baseline: 0.036, lineGap: 1.350, brandFont: 1.150,
   brandGap: 0.550, photoGapAboveText: 1.600,
 };
@@ -137,6 +137,21 @@ const ratio4 = (w, h) => Math.round((w / h) * 10000) / 10000;
     true,
   );
 }
+{
+  // Corners are square unless the slider explicitly asks for a radius: a
+  // rounded corner clips photographed pixels away from the frame.
+  check("radius defaults to 0 (no corner clipping)", blurLayout(1200, 800, BLUR_L).radius, 0);
+  check("radius slider is honoured", Math.round(blurLayout(1200, 800, BLUR_L, 0.05).radius), 60);
+  check("radius scales with the frame", Math.round(blurLayout(2400, 1600, BLUR_L, 0.05).radius), 120);
+  check("negative radius is clamped", blurLayout(1200, 800, BLUR_L, -0.5).radius, 0);
+}
+
+console.log("brand ink");
+// tint brands keep their brand colour: only neutral ink is repainted.
+check("pure black is neutral ink", isNeutralInk(0, 0, 0), true);
+check("light grey is neutral ink", isNeutralInk(200, 200, 200), true);
+check("fujifilm red survives tinting", isNeutralInk(0xed, 0x1a, 0x3a), false);
+check("canon red survives tinting", isNeutralInk(0xcc, 0x22, 0x29), false);
 
 console.log("zipStore");
 const payload = new TextEncoder().encode("hello viaexif");

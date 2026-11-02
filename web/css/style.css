@@ -258,7 +258,9 @@ html[data-theme="light"] .grain { opacity: .035; mix-blend-mode: multiply; }
   display: block;
   max-width: 100%;
   max-height: calc(100vh - 200px);
-  border-radius: 6px;
+  /* Square on purpose: the exported frame has square corners unless the
+     radius slider is raised, and a rounded preview would hide that. */
+  border-radius: 0;
   box-shadow: 0 24px 60px rgba(0, 0, 0, .55), 0 0 0 1px rgba(255, 255, 255, .04);
 }
 html[data-theme="light"] #preview {
