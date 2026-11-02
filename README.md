@@ -60,8 +60,8 @@ docker compose up -d          # 拉 GHCR 上的现成镜像
 纯 docker，不用 compose：
 
 ```bash
-docker build -t viaexif:1.1.6 .
-docker run -d --name viaexif -p 8080:8080 -v "$PWD/data:/data" viaexif:1.1.6
+docker build -t viaexif:1.1.7 .
+docker run -d --name viaexif -p 8080:8080 -v "$PWD/data:/data" viaexif:1.1.7
 ```
 
 ## 部署到 fnOS / NAS
@@ -76,7 +76,7 @@ ssh ija@192.168.50.222 "sudo bash /home/ija/viaexif/deploy/build.sh status"
 
 `pull` 模式：`docker pull ghcr.io/ija-wang/viaexif:latest`（失败自动换 `ghcr.1ms.run` 前缀）→ `compose up -d` → 轮询健康检查 → 打印镜像与访问地址。
 
-想从源码构建（NAS 上已同步源码）就把 `pull` 去掉，`up` 模式会 `docker build -t viaexif:1.1.6`，失败自动回退阿里云基础镜像。
+想从源码构建（NAS 上已同步源码）就把 `pull` 去掉，`up` 模式会 `docker build -t viaexif:1.1.7`，失败自动回退阿里云基础镜像。
 
 > 用 `http://192.168.x.x:端口` 直接访问就行，不必上 HTTPS。内网明文 HTTP 属于**非安全上下文**，
 > 页面里所有依赖它的 API 都有回退（`crypto.randomUUID` → `getRandomValues`，`navigator.clipboard` → `execCommand`），
@@ -85,7 +85,7 @@ ssh ija@192.168.50.222 "sudo bash /home/ija/viaexif/deploy/build.sh status"
 国内网络备选（直连 Docker Hub 超时时手动指定基础镜像）：
 
 ```bash
-sudo docker build -t viaexif:1.1.6 \
+sudo docker build -t viaexif:1.1.7 \
   --build-arg BASE_IMAGE=registry.cn-hangzhou.aliyuncs.com/library/python:3.12-slim .
 ```
 
@@ -96,9 +96,9 @@ sudo docker build -t viaexif:1.1.6 \
 在任意已构建成功的机器上：
 
 ```bash
-docker save viaexif:1.1.6 | gzip > viaexif-1.1.6.tar.gz   # 约 160MB
-scp viaexif-1.1.6.tar.gz ija@192.168.50.222:/home/ija/
-ssh -t ija@192.168.50.222 "gunzip -c /home/ija/viaexif-1.1.6.tar.gz | sudo docker load"
+docker save viaexif:1.1.7 | gzip > viaexif-1.1.7.tar.gz   # 约 160MB
+scp viaexif-1.1.7.tar.gz ija@192.168.50.222:/home/ija/
+ssh -t ija@192.168.50.222 "gunzip -c /home/ija/viaexif-1.1.7.tar.gz | sudo docker load"
 ```
 
 ### 直接拉已发布的镜像
@@ -194,11 +194,11 @@ BASE_URL=http://127.0.0.1:8080 node tests/e2e.mjs
 - **照片比例零改动**：经典模板把白条接在照片下方（画布竖向扩张），模糊模板的内嵌图宽度固定、高度按原图宽高比换算，画布随之伸缩。两个模板都不裁切、不拉伸照片——3:2 进去还是 3:2，2:3 也一样。模糊模板的内嵌图默认**直角**：圆角会切掉画幅四角上真实拍到的像素，只有把「圆角」滑杆往右拉才会生效。
 - **文本自适应**：机型/参数过长时按可用宽度降档字号（下限 62%），先排右侧再给左侧分配剩余宽度。
 - **品牌画的是 logo 图片**：从 EXIF 的 Make/Model 识别品牌后，把 `web/assets/brands/<key>.svg` 画到水印上。深色模板上需要换色的 logo 只重绘**中性墨**（黑/灰）为文字色，品牌色一律保留——Fujifilm 的黑字 + 红块因此在深色模板上仍是白字 + 红块。
-- **logo 只来自表格**：`tools/import-brand-svgs.py svg信息.xlsx --write` 把设计给的 iconfont 导出物洗干净（去掉 `t` / `class` / `p-id` / 固定 `width`·`height`）写成 `web/assets/brands/<key>.svg`，并打印可直接粘进 `server/config.py` 的 BRANDS 行。表格里没有的品牌一律不进仓库——少一个 logo，也好过多一个错的。
+- **logo 只来自表格**：`tools/import-brand-svgs.py svg信息.xlsx --write` 把设计给的 iconfont 导出物洗干净（去掉 `t` / `class` / `p-id` / 固定 `width`·`height`）写成 `web/assets/brands/<key>.svg`，并打印可直接粘进 `server/config.py` 的 BRANDS 行。表格里没有的品牌一律不进仓库——少一个 logo，也好过多一个错的。少数导出物里带了图标包自带的装饰框（GoPro 字标下面那四块实心方块），这类由 `tools/normalize-logos.mjs` 的 `EXTRA_RECTS` 按规则剔除，规则写进代码而不是手改文件，重新导入表格也能复现。
 - **换色是逐像素的，不是整片平涂**：`tint` 品牌先画到 scratch 画布，只把中性墨改成文字色，再 **1:1** 贴回主画布。这里必须 1:1：scratch 是 `ceil()` 出来的整数尺寸，按小数宽高缩放回去会把最右一列压成不到 1px 的灰色细线——Apple 旁边那条「多余的黑线」就是这么来的，不是 SVG 的问题。
 - **经典模板的分隔线可关**：品牌 logo 与参数之间那根 1px 竖线是模板元素，不是 logo 自带的。它现在由「分隔线」滑杆控制，默认 **0px（不画）**。
-- **底板只删白的**：`tools/normalize-logos.mjs` 自动删除**白色/空白**的整画布底板（以前 Nikon、ZTE 那种），但**彩色底板要人工判断**——Nikon 的黄方块、realme 的黄板、Xiaomi 的橙方块、oneplus 的红框都是 logo 本体，必须保留。`tests/e2e.mjs` 用像素覆盖率守这条线：满画布的品牌只允许白名单里的 `nikon` / `realme`。
-- **所有 logo 同一个高度**：`tools/normalize-logos.mjs` 先把 viewBox 裁到墨迹外框，再把画布重写成 **高 200 单位、宽 = 200 × 宽高比**，四周留 2% 内边距，所以「高度」就是「最高的那一点墨」，而且文件本身可互换（同一高度、同一单位、比例不变）。2% 内边距不是装饰：DJI 这类墨迹正好压在 x=0 的标，没有它每次光栅化都会削掉最外一列像素。经典模板下 logo 高度恒等于白条高度的 **1/3**（`brandFont = 0.3333`），宽度按各自宽高比等比缩放；右侧块超过画布 58% 时整块等比降档，不会挤压参数文字。
+- **底板只删「白色 + 实心 + 矩形」**：`tools/normalize-logos.mjs` 只删同时满足三个条件的顶层图形——纯白、铺满画布、路径只有直线命令（矩形）。判据是几何而不是颜色，因为按颜色删会误伤真图案：Nikon 的黄方块上那几道**白色斜线**、Leica 红方块里的白字、Sigma 圆盘里的白字都是 logo 本体，它们的路径带曲线，永远不会命中这条规则。彩色底板（Nikon 黄块、realme 黄板、Xiaomi 橙方块、OnePlus 红框）一律保留，`tests/e2e.mjs` 用像素覆盖率兜底。
+- **所有 logo 同一个高度**：`tools/normalize-logos.mjs` 先把 viewBox 裁到墨迹外框，再把画布重写成 **高 200 单位、宽 = 200 × 宽高比**，墨迹统一缩到 184 单位高、四周各留 **4%（8 单位）**。所以文件本身可互换：同一高度、同一单位、比例不变，`aspect` 恒等于 `宽 / 200`。4% 内边距不是装饰——水印里 logo 只有 24~40px 高，2% 会被光栅化抹成 0px，墨迹直接压在位图边缘，看起来就像自带一圈硬描边。`tests/e2e.mjs` 断言「任何 logo 的墨迹都不许碰到画布最外 1px」。经典模板下 logo 高度恒等于白条高度的 **1/3**（`brandFont = 0.3333`），宽度按各自宽高比等比缩放；右侧块超过画布 58% 时整块等比降档，不会挤压参数文字。
 - **浏览器优先，服务端兜底**：能用 `createImageBitmap` 解的一律本地处理；解不了的才 `POST /api/decode`，返回 token 而不是 base64（60MP RAW 转出的 JPEG 塞进 JSON 会爆）。
 - **解码帧只在内存**：`FrameCache` 15 分钟 TTL + 512MB 上限，不进 `/data`、不进数据库，分享链接的生命周期与它完全无关。
 - **EXIF 两条腿**：JPEG/PNG/WEBP 走自写 JS 解析器；HEIC 走 Pillow 的 Exif，RAW 走 exifread，最后统一成同一组字段名（`make/model/fNumber/exposure/iso/focal/dateTime`），前端 `toFields` 不需要知道来源。

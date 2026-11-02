@@ -192,3 +192,24 @@ cd ~/viaexif && sudo bash deploy/build.sh
 
 `deploy/build.sh` 内置国内镜像站回退（Docker Hub 直连失败时自动换阿里云 / 1ms），
 并把 `APP_VERSION` 打进镜像标签。
+
+---
+
+## 五、应用图标（含将来的飞牛 fpk）
+
+图标是一件而不是两件东西，避免「网页一个样、安装包里又是旧图」：
+
+| 文件 | 用途 |
+|---|---|
+| `web/assets/viaexif.svg` | **母版**（矢量，160×160，圆角 30）。页头 26px 标记、favicon、apple-touch-icon 都用它 |
+| `web/assets/icons/icon-<n>.png` | 由母版栅格化：16 / 32 / 48 / 64 / 128 / 180 / 192 / 256 / 512 |
+
+母版改了之后重出一套（透明底，圆角外是空的）：
+
+```bash
+node tools/make-icons.mjs      # 写 web/assets/icons/icon-*.png
+```
+
+做 fpk 时直接拿 `icon-256.png`，别从网页截图：它是 1:1 像素、无压缩损失。
+仓库里没有 `manifest` 或 `.fpk` 脚手架——真要做的时候再按飞牛当时的模板补，
+但图标、版本号（`server/config.py: APP_VERSION`）和镜像 tag 三者必须同号。
