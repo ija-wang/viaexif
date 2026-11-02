@@ -1,0 +1,10 @@
+fastapi>=0.115,<0.120
+uvicorn>=0.30,<0.36
+python-multipart>=0.0.9,<0.1
+
+# Camera-native decoding. Both wheels bundle their C libraries (libheif, libraw),
+# so the slim base image needs no extra apt packages.
+pillow>=11,<14
+pillow-heif>=0.18
+rawpy>=0.21
+exifread>=3.0

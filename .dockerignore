@@ -1,0 +1,14 @@
+.git
+.gitignore
+data
+__pycache__
+*.pyc
+*.pyo
+.vscode
+.idea
+tests
+docs
+README.md
+docker-compose.yml
+*.md
+.DS_Store

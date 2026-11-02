@@ -1,0 +1,89 @@
+name: docker
+
+# Builds the image and publishes it to two registries, so it can be found from a
+# NAS "image registry" browser (fnOS / 群晖 / Unraid all search Docker Hub) and
+# pulled directly from GHCR.
+#
+# Repo configuration (Settings → Secrets and variables → Actions):
+#   Variables: DOCKERHUB_USERNAME   e.g. ija            (optional)
+#   Secrets:   DOCKERHUB_TOKEN      Access Token, Read & Write (optional)
+# With them unset the workflow still builds and pushes to GHCR only, using the
+# built-in GITHUB_TOKEN — no setup required to get a working image.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: "Target platforms (comma separated)"
+        default: "linux/amd64"
+        required: false
+      push:
+        description: "Push to registries (false = build only)"
+        type: boolean
+        default: true
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: viaexif
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # required to push to ghcr.io
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Work out the image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ vars.DOCKERHUB_USERNAME != '' && format('docker.io/{0}/viaexif', vars.DOCKERHUB_USERNAME) || '' }}
+            ghcr.io/${{ github.repository_owner }}/viaexif
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - uses: docker/setup-qemu-action@v3
+        if: contains(inputs.platforms || 'linux/amd64', 'arm64')
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        if: vars.DOCKERHUB_USERNAME != '' && (github.event_name != 'workflow_dispatch' || inputs.push)
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Log in to GHCR
+        if: github.event_name != 'workflow_dispatch' || inputs.push
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ inputs.platforms || 'linux/amd64' }}
+          push: ${{ github.event_name != 'workflow_dispatch' || inputs.push }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true

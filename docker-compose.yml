@@ -1,0 +1,30 @@
+services:
+  viaexif:
+    build: .
+    image: viaexif:1.1.0
+    container_name: viaexif
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # 分享链接有效期（秒）。0 = 永不过期
+      EXIF_SHARE_TTL: "86400"
+      # 单文件上限（MB）
+      EXIF_MAX_UPLOAD_MB: "40"
+      EXIF_MAX_SHARE_MB: "40"
+      # HEIC / RAW 解码：单文件上限（MB）与解码后最长边（像素）
+      EXIF_MAX_DECODE_MB: "200"
+      EXIF_DECODE_MAX_PX: "12000"
+    volumes:
+      # 具名卷：权限自动继承（app 用户 uid 10001）。
+      # 想直接看文件就换成 bind mount，但需先 sudo chown -R 10001:10001 ./data
+      - viaexif-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,sys,urllib.request;p=os.environ.get('PORT','8080');sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:'+p+'/api/health',timeout=2).status==200 else 1)"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  viaexif-data:

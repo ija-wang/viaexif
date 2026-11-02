@@ -1,0 +1,25 @@
+# python / venv
+.venv/
+__pycache__/
+*.py[cod]
+
+# runtime data (share links, sqlite)
+data/
+.tmpdata/
+.devdata/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+
+# test artifacts (fixtures themselves are committed — they are small and let a
+# fresh clone run the suite without needing Pillow just to regenerate them)
+tests/.tmp/
+
+# build / packaging
+dist/
+
+# os / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
