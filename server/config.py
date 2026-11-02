@@ -13,7 +13,7 @@ from .imaging import capabilities
 BASE_DIR = Path(__file__).resolve().parent.parent
 WEB_DIR = BASE_DIR / "web"
 
-APP_VERSION = "1.1.8"
+APP_VERSION = "1.1.9"
 
 
 def _int_env(name: str, default: int) -> int:

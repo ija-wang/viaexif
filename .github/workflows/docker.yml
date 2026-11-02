@@ -6,7 +6,7 @@ name: docker
 # succeed while `import rawpy` fails at runtime.
 #
 # Repo configuration (Settings → Secrets and variables → Actions):
-#   Variables: DOCKERHUB_USERNAME   e.g. ija            (optional)
+#   Variables: DOCKERHUB_USERNAME   your Docker Hub id  (optional)
 #   Secrets:   DOCKERHUB_TOKEN      Access Token, Read & Write (optional)
 # With them unset the workflow still builds and publishes to GHCR only, using
 # the built-in GITHUB_TOKEN — no setup required to get a working image.

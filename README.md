@@ -1,30 +1,54 @@
 # viaEXIF · self-host
 
-[![docker](https://github.com/ija-wang/viaexif/actions/workflows/docker.yml/badge.svg)](https://github.com/ija-wang/viaexif/actions/workflows/docker.yml)
-
 相机水印生成器的自托管实现：读取照片 EXIF，在图上叠一条参数横幅或模糊边框，导出 JPEG / PNG / WEBP / HEIC。
 
-JPG / PNG / WEBP 全程在浏览器 Canvas 里处理，原图不出设备；**HEIC / HEIF / AVIF 和 30+ 种相机 RAW** 浏览器解不了，交给同一个容器里的 libheif / libraw 解码一次（原文件不落盘，解码帧 15 分钟后从内存清除）。
+JPG / PNG / WEBP 全程在浏览器 Canvas 里处理，原图不出设备；**HEIC / HEIF / AVIF 和 26 种相机 RAW** 浏览器解不了，交给同一个容器里的 libheif / libraw 解码一次（原文件不落盘，解码帧 15 分钟后从内存清除）。
 
 ![经典模板](docs/assets/screenshot-classic.png)
 
-两种模板（经典 / 模糊）、34 个品牌 logo（全部为矢量图，统一画布高度）、6 个参数可改、比例滑杆（白条高度 / logo 大小 / 分隔线 / 可选圆角）、批量 ZIP 导出、可分享链接；支持 Apple 实况照片（HEIC + MOV 自动配对）、相机 RAW 直读、HEIC 导出。
-功能拆解与版式规格见 **[docs/distillation.md](docs/distillation.md)**，镜像发布与飞牛 NAS 安装见 **[docs/publishing.md](docs/publishing.md)**。
+两种模板（经典 / 模糊）、34 个品牌 logo（全部为矢量图，统一画布高度）、6 个 EXIF 参数可改、比例滑杆（白条高度 / logo 大小 / 分隔线 / 圆角）、批量 ZIP 导出、可分享链接；支持 Apple 实况照片（HEIC + MOV 自动配对）、相机 RAW 直读、HEIC 导出。
+
+> 下面的命令里，`<你的用户名>` 指 GitHub 用户名或组织名，`<NAS-IP>` 指 NAS 的局域网地址。
+> 镜像地址统一写作 `ghcr.io/<你的用户名>/viaexif`，按你自己的仓库替换即可。
 
 ```bash
-docker pull ghcr.io/ija-wang/viaexif:latest
+docker pull ghcr.io/<你的用户名>/viaexif:latest
 ```
 
 ---
+
+## 界面
+
+**模糊模板**：内嵌图按原图比例，圆角默认 0。
+
+![模糊模板](docs/assets/screenshot-blur.png)
+
+**浅色主题**：跟随系统 / `localStorage`。
+
+![浅色主题](docs/assets/screenshot-light.png)
+
+**空状态**：拖拽、点击或粘贴上传。
+
+![空状态](docs/assets/screenshot-home.png)
+
+截图由 `node tools/doc-screenshots.mjs` 从运行中的实例重新生成（2x 采集后降采样；示例照片是仓库内的合成测试图，不含任何真实照片）。
+
+## 34 个品牌，同一高度
+
+![品牌对照](docs/assets/logo-sheet.png)
+
+全部是矢量 SVG，统一到「高 200 单位、宽 = 200 × 宽高比、四周 4% 内边距」的同一坐标系，
+所以每个标的**高度一致、宽度按各自比例**，文件之间可以互换。空白格表示设计表格里没有该品牌——
+少一个 logo，也好过多一个错的。这张对照图由 `python tools/logo_sheet.py` 生成，改完 logo 重跑一次即可。
 
 ## 目录
 
 ```
 .
 ├── Dockerfile / docker-compose.yml / LICENSE
-├── .github/workflows/docker.yml   多架构构建 → GHCR（+Docker Hub）
+├── .github/workflows/docker.yml   多架构构建 → GHCR（+Docker Hub）+ 冒烟测试
 ├── server/            FastAPI：静态托管 + /api/config + /api/share + 相机格式解码
-│   ├── config.py      唯一配置源（模板、版式比例、品牌表、输入格式）
+│   ├── config.py      唯一配置源（模板、版式比例、品牌表、输入格式、滑杆）
 │   ├── imaging.py     HEIC/AVIF/RAW 嗅探与解码、EXIF 提取、帧缓存
 │   └── main.py
 ├── web/               零构建前端
@@ -41,12 +65,12 @@ docker pull ghcr.io/ija-wang/viaexif:latest
 │       └── app.js     交互编排
 ├── deploy/
 │   └── build.sh       一键构建/启动/日志/清理（自动回退国内镜像站）
-├── tools/             logo 导入（表格→SVG）/ 归一化、CDP 截图、端到端探针
-├── tests/             单测 + CDP 端到端
+├── tools/             logo 导入与归一化、图标栅格化、文档截图、调试探针
+├── tests/             单测 + 解码单测 + CDP 端到端
 └── docs/              蒸馏报告、发布说明、截图
 ```
 
-代码规模：Python 约 1000 行 / 前端 JS 约 1920 行 / CSS 约 810 行 / 测试约 820 行，另有 34 个 SVG 资源（206 KB）。
+代码规模：Python 约 1030 行 / 前端 JS 约 2200 行 / CSS 约 870 行 / 测试约 1060 行，另有 34 个 SVG 资源（204 KB）。
 
 ## 快速开始
 
@@ -60,45 +84,76 @@ docker compose up -d          # 拉 GHCR 上的现成镜像
 纯 docker，不用 compose：
 
 ```bash
-docker build -t viaexif:1.1.8 .
-docker run -d --name viaexif -p 8080:8080 -v "$PWD/data:/data" viaexif:1.1.8
+docker build -t viaexif:1.1.9 .
+docker run -d --name viaexif -p 8080:8080 -v "$PWD/data:/data" viaexif:1.1.9
 ```
 
-## 部署到 fnOS / NAS
+## 部署到 NAS（fnOS / 群晖 / 任意 Linux）
+
+宿主机上需要 docker 与 compose 插件。仓库自带 `deploy/build.sh`，把「拉镜像 → 起容器 → 轮询健康检查」串成一条命令：
 
 ```bash
-# 1) 拉现成镜像并启动（最快，不编译；ija 不在 docker 组，必须 sudo）
-ssh -t ija@192.168.50.222 "sudo bash /home/ija/viaexif/deploy/build.sh pull"
-
-# 2) 查看
-ssh ija@192.168.50.222 "sudo bash /home/ija/viaexif/deploy/build.sh status"
+git clone https://github.com/<你的用户名>/viaexif.git
+cd viaexif
+sudo bash deploy/build.sh pull      # 拉现成镜像并启动（不编译）
+sudo bash deploy/build.sh status    # 查看容器与镜像状态
+sudo bash deploy/build.sh logs      # 跟随日志
 ```
 
-`pull` 模式：`docker pull ghcr.io/ija-wang/viaexif:latest`（失败自动换 `ghcr.1ms.run` 前缀）→ `compose up -d` → 轮询健康检查 → 打印镜像与访问地址。
+`pull` 模式：`docker pull ghcr.io/<你的用户名>/viaexif:latest`（失败自动换 `ghcr.1ms.run` 前缀）→ `compose up -d` → 轮询健康检查 → 打印镜像与访问地址。
 
-想从源码构建（NAS 上已同步源码）就把 `pull` 去掉，`up` 模式会 `docker build -t viaexif:1.1.8`，失败自动回退阿里云基础镜像。
+想从源码构建就把 `pull` 去掉：`up` 模式会按 `server/config.py` 里的 `APP_VERSION` 打本地 tag，失败自动回退阿里云基础镜像。
 
-> 用 `http://192.168.x.x:端口` 直接访问就行，不必上 HTTPS。内网明文 HTTP 属于**非安全上下文**，
+> 用 `http://<NAS-IP>:8080` 直接访问就行，不必上 HTTPS。内网明文 HTTP 属于**非安全上下文**，
 > 页面里所有依赖它的 API 都有回退（`crypto.randomUUID` → `getRandomValues`，`navigator.clipboard` → `execCommand`），
 > 所以换到局域网 IP 访问不会有额外限制。
 
 国内网络备选（直连 Docker Hub 超时时手动指定基础镜像）：
 
 ```bash
-sudo docker build -t viaexif:1.1.8 \
+sudo docker build -t viaexif:1.1.9 \
   --build-arg BASE_IMAGE=registry.cn-hangzhou.aliyuncs.com/library/python:3.12-slim .
 ```
 
-（`ija` 不在 docker 组，命令需 `sudo`。若要免 sudo：`sudo usermod -aG docker ija` 后重新登录。）
+### 用 NAS 图形界面装（不碰命令行）
+
+飞牛 / 群晖的「镜像仓库」搜索框查的是 Docker Hub 公开索引，而 NAS 上 `hub.docker.com` 常常不可达，
+所以别指望搜出来 —— 用「拉取镜像」直接填完整地址：
+
+```
+ghcr.io/<你的用户名>/viaexif:1.1.9
+```
+
+拉完在「本地镜像」里点运行，映射容器端口 `8080`、挂一个持久化目录到 `/data` 即可。
+想要开机自启 + 健康检查，用「Compose / 项目」粘贴仓库里的 `docker-compose.yml` 更省事。
+
+### 升级到新版本
+
+镜像 tag 是容器的不可变字段，`docker compose up -d` 只会重建 compose 管的容器。所以：
+
+```bash
+# compose 起的容器
+cd viaexif && git pull && sudo docker compose pull && sudo docker compose up -d
+
+# 如果是用界面 / docker run 起的独立容器
+sudo docker pull ghcr.io/<你的用户名>/viaexif:<新版本>
+# 先 docker inspect 抄下当前容器的 env / 挂载 / 端口，再按同样参数重建：
+sudo docker stop viaexif && sudo docker rm viaexif
+sudo docker run -d --name viaexif --restart always -p 8080:8080 \
+  -v <数据目录>:/data ghcr.io/<你的用户名>/viaexif:<新版本>
+```
+
+`docker container update` 只能改资源项（CPU / 内存），**改不了 image**，别指望它升级。
+重建前一定先 `docker inspect` 对一遍挂载路径——漏掉 `-v` 会得到一个「能跑但数据是空」的容器。
 
 ### 镜像分发（不重新构建也能装）
 
 在任意已构建成功的机器上：
 
 ```bash
-docker save viaexif:1.1.8 | gzip > viaexif-1.1.8.tar.gz   # 约 160MB
-scp viaexif-1.1.8.tar.gz ija@192.168.50.222:/home/ija/
-ssh -t ija@192.168.50.222 "gunzip -c /home/ija/viaexif-1.1.8.tar.gz | sudo docker load"
+docker save viaexif:1.1.9 | gzip > viaexif-1.1.9.tar.gz   # 约 160MB
+scp viaexif-1.1.9.tar.gz <你的用户>@<NAS-IP>:/tmp/
+ssh -t <你的用户>@<NAS-IP> "gunzip -c /tmp/viaexif-1.1.9.tar.gz | sudo docker load"
 ```
 
 ### 直接拉已发布的镜像
@@ -107,11 +162,8 @@ ssh -t ija@192.168.50.222 "gunzip -c /home/ija/viaexif-1.1.8.tar.gz | sudo docke
 
 ```bash
 docker run -d --name viaexif -p 8080:8080 -v viaexif-data:/data \
-  ghcr.io/ija-wang/viaexif:latest
+  ghcr.io/<你的用户名>/viaexif:latest
 ```
-
-飞牛 / 群晖的「镜像仓库」搜索框查的是 Docker Hub 公开索引，而 NAS 上 `hub.docker.com` 常常不可达，
-所以别指望搜出来 —— 用「拉取镜像」直接填完整地址即可，细节见 [docs/publishing.md](docs/publishing.md)。
 
 ## 本地开发（不用 Docker）
 
@@ -164,7 +216,7 @@ curl -o frame.jpg http://localhost:8080/api/decode/<token>
 | 常规位图 | JPG / PNG / WEBP | 浏览器（原图不出设备） |
 | 手机 / 苹果 | HEIC / HEIF / AVIF | 容器（pillow-heif / libheif） |
 | 实况照片 | HEIC + 同名 MOV（自动配对） | HEIC 走容器，MOV 只在浏览器里读元数据 |
-| 相机 RAW | DNG / CR2 / CR3 / CRW / NEF / NRW / ARW / SRF / SR2 / RAF / ORF / RW2 / RAW / PEF / SRW / 3FR / FFF / IIQ / MOS / MRW / X3F / DCR / KDC / ERF / MEF / RWL | 容器（rawpy / libraw，相机白平衡 + AHD 去马赛克） |
+| 相机 RAW | DNG / CR2 / CR3 / CRW / NEF / NRW / ARW / SRF / SR2 / RAF / ORF / RW2 / RAW / PEF / SRW / 3FR / FFF / IIQ / MOS / MRW / X3F / DCR / KDC / ERF / MEF / RWL（26 种） | 容器（rawpy / libraw，相机白平衡 + AHD 去马赛克） |
 | 导出 | JPEG / PNG / WEBP / HEIC | 前三者浏览器，HEIC 由 libheif 编码 |
 
 格式判断看**文件头魔数**，不看扩展名也不看 MIME —— 相机文件上传到浏览器时 `File.type` 经常是空字符串。
@@ -173,8 +225,8 @@ curl -o frame.jpg http://localhost:8080/api/decode/<token>
 
 ```bash
 python tests/gen_fixtures.py      # jpg/png/webp + HEIC + 实况 HEIC/MOV + 合成 Bayer DNG
-bash tests/run.sh                 # 52 项前端单测 + 35 项解码单测 + ZIP CRC 校验
-node tests/e2e.mjs                # 真实 Edge 走 CDP：35 项，含 HEIC/实况/RAW/HEIC 导出
+bash tests/run.sh                 # 72 项前端单测 + 35 项解码单测 + ZIP CRC 校验
+node tests/e2e.mjs                # 真实 Edge 走 CDP：50 项，含 HEIC/实况/RAW/HEIC 导出
 ```
 
 DNG 夹具是 `tests/gen_raw_fixture.py` 现场生成的 60 KB 真 DNG（16bit CFA、DNG 1.4 标签），libraw 能正常解出图像，因此 RAW 链路在 CI 里是真跑的，不是 mock。
@@ -194,12 +246,13 @@ BASE_URL=http://127.0.0.1:8080 node tests/e2e.mjs
 - **照片比例零改动**：经典模板把白条接在照片下方（画布竖向扩张），模糊模板的内嵌图宽度固定、高度按原图宽高比换算，画布随之伸缩。两个模板都不裁切、不拉伸照片——3:2 进去还是 3:2，2:3 也一样。模糊模板的内嵌图默认**直角**：圆角会切掉画幅四角上真实拍到的像素，只有把「圆角」滑杆往右拉才会生效。
 - **文本自适应**：机型/参数过长时按可用宽度降档字号（下限 62%），先排右侧再给左侧分配剩余宽度。
 - **品牌画的是 logo 图片**：从 EXIF 的 Make/Model 识别品牌后，把 `web/assets/brands/<key>.svg` 画到水印上。深色模板上需要换色的 logo 只重绘**中性墨**（黑/灰）为文字色，品牌色一律保留——Fujifilm 的黑字 + 红块因此在深色模板上仍是白字 + 红块。
-- **logo 只来自表格**：`tools/import-brand-svgs.py svg信息.xlsx --write` 把设计给的 iconfont 导出物洗干净（去掉 `t` / `class` / `p-id` / 固定 `width`·`height`）写成 `web/assets/brands/<key>.svg`，并打印可直接粘进 `server/config.py` 的 BRANDS 行。表格里没有的品牌一律不进仓库——少一个 logo，也好过多一个错的。少数导出物里带了图标包自带的装饰框（GoPro 字标下面那四块实心方块），这类由 `tools/normalize-logos.mjs` 的 `EXTRA_RECTS` 按规则剔除，规则写进代码而不是手改文件，重新导入表格也能复现。
+- **logo 只来自设计表格**：`tools/import-brand-svgs.py <表格>.xlsx --write` 把设计给的 iconfont 导出物洗干净（去掉 `t` / `class` / `p-id` / 固定 `width`·`height`）写成 `web/assets/brands/<key>.svg`，并打印可直接粘进 `server/config.py` 的 BRANDS 行。表格里没有的品牌一律不进仓库——少一个 logo，也好过多一个错的。少数导出物里带了图标包自带的装饰框（GoPro 字标下面那四块实心方块），这类由 `tools/normalize-logos.mjs` 的 `EXTRA_RECTS` 按规则剔除，规则写进代码而不是手改文件，重新导入表格也能复现。
 - **换色是逐像素的，不是整片平涂**：`tint` 品牌先画到 scratch 画布，只把中性墨改成文字色，再 **1:1** 贴回主画布。这里必须 1:1：scratch 是 `ceil()` 出来的整数尺寸，按小数宽高缩放回去会把最右一列压成不到 1px 的灰色细线——Apple 旁边那条「多余的黑线」就是这么来的，不是 SVG 的问题。
 - **经典模板的分隔线默认 2px**：品牌 logo 与参数之间那根竖线是模板元素，不是 logo 自带的，由「分隔线」滑杆控制（0 = 不画，最大 6px，步长 1px）。默认不再是 1px：1px 落在半像素列上会被抗锯齿摊成一条灰蒙蒙的杂线，看起来正好像「logo 没抠干净」；2px 才是「一根线」。
 - **scratch 画布按需定尺**：换色用的 scratch 画布以前只增不减，并且只清当前 logo 的那块矩形——上一个更宽的 logo 会活在它右边；`drawImage` 是双线性采样，目标最后一列会多取一个纹素，于是把那段残墨捞了回来，预览里就多出一条贴着 logo 的 1px 灰线（导出尺寸大、清除范围刚好盖住，所以另存是干净的）。现在每次按 `ceil(w) × ceil(h)` 精确定尺，重设尺寸即重置位图，`tests/e2e.mjs` 断言「同一个 logo 在有历史和没历史时渲染结果必须逐像素相同」。
 - **底板只删「白色 + 实心 + 矩形」**：`tools/normalize-logos.mjs` 只删同时满足三个条件的顶层图形——纯白、铺满画布、路径只有直线命令（矩形）。判据是几何而不是颜色，因为按颜色删会误伤真图案：Nikon 的黄方块上那几道**白色斜线**、Leica 红方块里的白字、Sigma 圆盘里的白字都是 logo 本体，它们的路径带曲线，永远不会命中这条规则。彩色底板（Nikon 黄块、realme 黄板、Xiaomi 橙方块、OnePlus 红框）一律保留，`tests/e2e.mjs` 用像素覆盖率兜底。
 - **所有 logo 同一个高度**：`tools/normalize-logos.mjs` 先把 viewBox 裁到墨迹外框，再把画布重写成 **高 200 单位、宽 = 200 × 宽高比**，墨迹统一缩到 184 单位高、四周各留 **4%（8 单位）**。所以文件本身可互换：同一高度、同一单位、比例不变，`aspect` 恒等于 `宽 / 200`。4% 内边距不是装饰——水印里 logo 只有 24~40px 高，2% 会被光栅化抹成 0px，墨迹直接压在位图边缘，看起来就像自带一圈硬描边。`tests/e2e.mjs` 断言「任何 logo 的墨迹都不许碰到画布最外 1px」。经典模板下 logo 高度恒等于白条高度的 **1/3**（`brandFont = 0.3333`），宽度按各自宽高比等比缩放；右侧块超过画布 58% 时整块等比降档，不会挤压参数文字。
+- **图标一件而不是两件**：`web/assets/viaexif.svg` 是母版，`node tools/make-icons.mjs` 出 16–512px 一套 PNG（页头 / favicon / apple-touch-icon / 将来的 fpk 都用同一份），不会出现「网页一个样、安装包又是旧图」。
 - **浏览器优先，服务端兜底**：能用 `createImageBitmap` 解的一律本地处理；解不了的才 `POST /api/decode`，返回 token 而不是 base64（60MP RAW 转出的 JPEG 塞进 JSON 会爆）。
 - **解码帧只在内存**：`FrameCache` 15 分钟 TTL + 512MB 上限，不进 `/data`、不进数据库，分享链接的生命周期与它完全无关。
 - **EXIF 两条腿**：JPEG/PNG/WEBP 走自写 JS 解析器；HEIC 走 Pillow 的 Exif，RAW 走 exifread，最后统一成同一组字段名（`make/model/fNumber/exposure/iso/focal/dateTime`），前端 `toFields` 不需要知道来源。
@@ -215,3 +268,14 @@ BASE_URL=http://127.0.0.1:8080 node tests/e2e.mjs
 - 未做账号与配额；分享链接是「知道即访问」，生产环境建议放到反代后面加 Basic Auth。
 - 批量上限 20 张（前端常量 `MAX_FILES`），超大图批量会吃内存。
 - 品牌 logo 为单色/彩色 SVG 图片，商标归各品牌所有，此处仅用于标识照片的拍摄设备。方形 logo（Nikon、Leica、Apple、Huawei 等）在同样高度下视觉面积天然偏小，这是「高度统一 + 宽度等比」的必然结果；若更在意面积观感，可把「品牌 logo 大小」滑杆调大。
+
+## 变更记录
+
+| 版本 | 要点 |
+|---|---|
+| **1.1.9** | 文档重写：README / 发布说明 / 蒸馏报告全部按当前版本校对，截图重新生成；首页 RAW 计数（32 → 26）与配置对齐；`deploy/build.sh` 的本地镜像 tag 改为读 `APP_VERSION` |
+| 1.1.8 | 修掉预览里贴着 logo 的 1px 灰线（scratch 画布改为按 logo 尺寸精确定尺，不再残留上一个 logo 的墨）；分隔线默认改 2px；logo 统一 200 单位高 + 4% 内边距，白色图案不再被误删；新增应用图标母版与 PNG 一套 |
+| 1.1.7 | 品牌收敛到设计表格里的 34 个，按表格 SVG 重导；logo 归一化改为「几何判据」删白底板；模糊模板圆角改为滑杆、默认 0 |
+| 1.1.6 | 品牌 logo 全部改为矢量 SVG（此前是位图），新增 logo 大小滑杆 |
+
+版本号只在 `server/config.py: APP_VERSION` 定义一次，界面、`/api/health`、镜像 tag 三处必须同号。

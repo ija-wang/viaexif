@@ -1,15 +1,17 @@
-# 发布：GitHub、镜像仓库与飞牛（fnOS）
+# 发布：GitHub、镜像仓库与 NAS 安装
 
-这份文档回答两件事：
+这份文档回答三件事：
 
-1. 代码怎么推到 GitHub；
-2. 镜像怎么发布，才能**在飞牛 NAS 的「镜像仓库」里搜到 / 装到**。
+1. 代码怎么推到 GitHub、CI 怎么出镜像；
+2. 镜像怎么发到 GHCR / Docker Hub，版本 tag 怎么来；
+3. 在 NAS（飞牛 fnOS、群晖或任意 Linux）上怎么装、怎么升级。
+
+> 文中 `<你的用户名>` 指 GitHub 用户名或组织名，`<NAS-IP>` 指 NAS 的局域网地址，
+> `<数据目录>` 指宿主上给容器 `/data` 用的持久化路径。按自己的环境替换即可。
 
 ---
 
 ## 一、推到 GitHub
-
-仓库已经初始化好（`main` 分支，首次提交完成），只差一个远端。
 
 ```bash
 cd viaexif
@@ -40,19 +42,21 @@ ssh -T git@github.com     # 期望输出 Hi <用户名>! ...
 cat ~/.ssh/id_ed25519.pub    # 复制整行，Title 随便填，Key type 选 Authentication Key
 ```
 
-> 本机 `github.com:22` 与 `ssh.github.com:443` 都可直连；`github.com` 的 443 在部分网络下会被阻断，
-> 表现为浏览器打不开但 `git push`（走 22 端口）正常。
+> `github.com:22` 与 `ssh.github.com:443` 两条通路都可以用；部分网络会阻断 `github.com` 的 443，
+> 表现为浏览器打不开但 `git push`（走 22 端口）正常，这时把远端改成 `ssh.github.com:443` 即可。
 
 ---
 
 ## 二、镜像发布：CI 已经写好
 
-`.github/workflows/docker.yml` 会在 `main` 分支推送和 `v*` 标签时自动构建并推两个地方：
+`.github/workflows/docker.yml` 在 `main` 分支推送和 `v*` 标签时自动构建并推两个地方：
 
 | Registry | 镜像地址 | 需要的配置 |
 |---|---|---|
-| GHCR | `ghcr.io/ija-wang/viaexif:latest` | 无，用仓库自带的 `GITHUB_TOKEN` |
-| Docker Hub | `docker.io/<用户名>/viaexif:latest` | 见下 |
+| GHCR | `ghcr.io/<你的用户名>/viaexif:latest` | 无，用仓库自带的 `GITHUB_TOKEN` |
+| Docker Hub | `docker.io/<你的DockerHub用户名>/viaexif:latest` | 见下 |
+
+工作流里的镜像前缀取自 `github.repository_owner`，所以**换仓库不用改代码**，谁 fork 谁就能出自己的镜像。
 
 Docker Hub 是**可选**的：没配就只推 GHCR，工作流照样绿。
 
@@ -71,10 +75,12 @@ token 只显示一次，务必当场复制。
 ### 打版本标签
 
 ```bash
-git tag v1.1.6 && git push origin v1.1.6
+git tag v1.1.9 && git push origin v1.1.9
 ```
 
-`docker/metadata-action` 会把 `v1.1.6` 展开成 `1.1.6`、`1.1`、`latest` 三个 tag。
+`docker/metadata-action` 会把 `v1.1.9` 展开成 `1.1.9`、`1.1`、`latest` 三个 tag。
+版本号以 `server/config.py: APP_VERSION` 为准，打标签前先确认它和这次的改动一致——
+`/api/health` 返回的 `version` 就是从这个常量来的，三者对不上时排障会很痛苦。
 
 ### 想同时出 ARM 镜像（群晖 ARM / 树莓派）
 
@@ -83,20 +89,20 @@ arm64 走 QEMU 模拟，构建时间大约翻 4 倍；`pillow-heif` 和 `rawpy` 
 
 ---
 
-## 三、飞牛镜像仓库"搜得到"的真相
+## 三、在 NAS 上装
 
-先把机制说清楚，否则会一直白试。
+### 先搞清楚一件事：镜像仓库的搜索框查不到你
 
 飞牛 Docker → **镜像仓库** 页面里的搜索框，查的是 **Docker Hub 的公开搜索索引**（`hub.docker.com/v2/search/repositories/`）。
 它**不是**搜你添加的"镜像源"，也**不搜** GHCR / 阿里云 ACR。
 
-所以在飞牛里能被搜到，同时满足三个条件才行：
+所以在飞牛里能被搜到，要同时满足三个条件：
 
 1. 镜像在 **Docker Hub** 上，且仓库是 **public**；
 2. Docker Hub 的搜索索引收录了它 —— 新建仓库通常要**几小时到一天**才进索引，刚推完搜不到是正常的；
 3. **NAS 能访问 `hub.docker.com`**。
 
-第 3 条是最容易翻车的一条。在本机 NAS（`ijaHub` / fnOS）上实测：
+第 3 条是最容易翻车的一条。很多国内网络环境下 `hub.docker.com` 直接不可达：
 
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' https://hub.docker.com/v2/search/repositories/?query=nginx
@@ -105,38 +111,37 @@ curl -s -o /dev/null -w '%{http_code}\n' https://ghcr.io/v2/
 # → 401   （可达，401 是未认证的正常响应）
 ```
 
-也就是说：**即使镜像已经在 Docker Hub 上，这台 NAS 的搜索框也大概率搜不出东西**——
+也就是说：**即使镜像已经在 Docker Hub 上，搜索框也大概率搜不出东西**——
 飞牛论坛上"同样的网络环境群晖能搜到、fnOS 搜不到"的帖子，根因就在这。
 
-### 结论：别指望搜索，用下面三条路
-
-#### 路 A（最省事）：直接拉，绕开搜索框
+### 路 A（最省事）：直接拉，绕开搜索框
 
 飞牛 Docker → **镜像** → 右上角 **拉取** → 填完整地址：
 
 ```
-ghcr.io/ija-wang/viaexif:latest
+ghcr.io/<你的用户名>/viaexif:1.1.9
 ```
 
 国内直连 `ghcr.io` 慢的话，用加速前缀（飞牛「仓库设置」里加的源也是同一个原理）：
 
 ```
-ghcr.1ms.run/ija-wang/viaexif:latest
+ghcr.1ms.run/<你的用户名>/viaexif:1.1.9
 ```
 
 拉完在「本地镜像」里就有了，点运行即可。这条路不依赖 Docker Hub，最稳。
 
-> **2026-11-02 实测**：`ghcr.io/ija-wang/viaexif` 的两个 tag（`latest` / `main`）匿名 token 即可取到 manifest，包是 public；
-> 从 `ijaHub`（192.168.50.222）发起同样的请求返回 `manifest:200`，说明这台 NAS 直连 GHCR 就能拉，不需要额外配镜像源。
+> GHCR 上的包默认是 public 的，匿名 token 就能取到 manifest：
+> `curl -s "https://ghcr.io/token?scope=repository:<你的用户名>/viaexif:pull&service=ghcr.io"`。
+> 如果返回 403 / manifest:denied，去仓库 Packages 页面把包可见性改成 public。
 
-#### 路 B：用 Compose 装（能开机自启、带健康检查）
+### 路 B：用 Compose 装（能开机自启、带健康检查）
 
 飞牛 Docker → **Compose** → 新增项目，粘贴：
 
 ```yaml
 services:
   viaexif:
-    image: ghcr.io/ija-wang/viaexif:latest
+    image: ghcr.io/<你的用户名>/viaexif:1.1.9
     container_name: viaexif
     restart: unless-stopped
     ports:
@@ -150,15 +155,23 @@ services:
       - ./data:/data
 ```
 
-#### 路 C（真要让「镜像仓库」里翻得到）：在 NAS 上自建私有 registry
-
-搜索框搜不到自建仓库，但飞牛「仓库设置 → 添加」支持填私有地址 + 账号密码，
-添加后可以在该仓库下浏览镜像 —— 这是唯一能"在飞牛界面里看到自己镜像"的可控方式。
+绑定的 `./data` 要可写。容器里以 `app`（uid 10001）运行，bind mount 权限不对会起不来：
 
 ```bash
-# NAS 上（ija 不在 docker 组，需要 sudo）
+sudo chown -R 10001:10001 ./data
+```
+
+不想折腾权限就用具名卷（`viaexif-data:/data`），权限自动继承。
+
+### 路 C（真要让「镜像仓库」里翻得到）：在 NAS 上自建私有 registry
+
+搜索框搜不到自建仓库，但飞牛「仓库设置 → 添加」支持填私有地址 + 账号密码，
+添加后可以在该仓库下浏览镜像 —— 这是唯一能「在飞牛界面里看到自己镜像」的可控方式。
+
+```bash
+# NAS 上（docker 一般需要 sudo）
 sudo docker run -d --name registry -p 5000:5000 \
-  -v /vol2/docker/registry:/var/lib/registry \
+  -v <数据目录>/registry:/var/lib/registry \
   -e REGISTRY_STORAGE_DELETE_ENABLED=true \
   registry:2
 ```
@@ -166,42 +179,85 @@ sudo docker run -d --name registry -p 5000:5000 \
 把本机构建好的镜像塞进去（在能跑 docker 的机器上）：
 
 ```bash
-docker tag viaexif:1.1.6 192.168.50.222:5000/viaexif:1.1.6
-docker push 192.168.50.222:5000/viaexif:1.1.6
+docker tag viaexif:1.1.9 <NAS-IP>:5000/viaexif:1.1.9
+docker push <NAS-IP>:5000/viaexif:1.1.9
 ```
 
-NAS 的 `/etc/docker/daemon.json` 里已有 `insecure-registries`，
-把 `192.168.50.222:5000` 加进去（**别用脚本整份覆盖这个文件**，里面有 `data-root`，写坏了镜像和容器会一起消失），
-然后在飞牛「仓库设置」里添加 `http://192.168.50.222:5000`。
+NAS 的 `/etc/docker/daemon.json` 里要有 `insecure-registries` 并包含 `<NAS-IP>:5000`
+（**别用脚本整份覆盖这个文件**，里面通常还有 `data-root`，写坏了镜像和容器会一起消失）：
 
-> registry:2 的 `_catalog` 只列仓库名，不支持关键词搜索；想要搜索能力就换 Harbor（飞牛论坛有教程）。
+```json
+{
+  "insecure-registries": ["<NAS-IP>:5000"]
+}
+```
+
+改完 `sudo systemctl restart docker`，再在飞牛「仓库设置」里添加 `http://<NAS-IP>:5000`。
+
+> registry:2 的 `_catalog` 只列仓库名，不支持关键词搜索；想要搜索能力就换 Harbor。
 
 ---
 
-## 四、本机没有 Docker 时怎么办
+## 四、升级已有容器
 
-这台 Windows 上没装 Docker Desktop，所以构建只能在别处做。两个选择：
-
-- **交给 GitHub Actions**（推荐）：推上去就自动出镜像，本机什么都不用装；
-- **在 NAS 上构建**：
+镜像 tag 是容器的不可变字段，`docker compose up -d` 只对 compose 管的容器有效。
+先确认容器是谁起的：
 
 ```bash
-ssh ija@192.168.50.222
-cd ~/viaexif && sudo bash deploy/build.sh
+sudo docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' viaexif
 ```
 
-`deploy/build.sh` 内置国内镜像站回退（Docker Hub 直连失败时自动换阿里云 / 1ms），
-并把 `APP_VERSION` 打进镜像标签。
+- 有输出（compose 项目名）→ compose 管的，直接：
+
+  ```bash
+  cd <项目目录> && sudo docker compose pull && sudo docker compose up -d
+  ```
+
+- 输出为空 → **界面或 `docker run` 起的独立容器**，只能按原参数重建：
+
+  ```bash
+  sudo docker inspect viaexif          # 抄下 Env / Mounts / PortBindings / RestartPolicy
+  sudo docker pull ghcr.io/<你的用户名>/viaexif:<新版本>
+  sudo docker stop viaexif && sudo docker rm viaexif
+  sudo docker run -d --name viaexif --restart always -p 8080:8080 \
+    -v <数据目录>:/data ghcr.io/<你的用户名>/viaexif:<新版本>
+  ```
+
+`docker container update` 只能改 CPU / 内存这类资源项，**改不了 image**。
+重建前务必对一遍挂载路径和 env，漏掉 `-v` 会得到一个「能跑但数据是空」的容器。
+
+验证升级是否生效：
+
+```bash
+curl -s http://<NAS-IP>:8080/api/health    # 期望 version 与目标版本一致
+```
 
 ---
 
-## 五、应用图标（含将来的飞牛 fpk）
+## 五、本机没有 Docker 时怎么办
+
+构建只能在别处做，两个选择：
+
+- **交给 GitHub Actions**（推荐）：推上去就自动出镜像，本机什么都不用装；
+- **在 NAS 上构建**（NAS 上要有源码）：
+
+  ```bash
+  ssh <你的用户>@<NAS-IP>
+  cd <源码目录> && sudo bash deploy/build.sh
+  ```
+
+`deploy/build.sh` 内置国内镜像站回退（Docker Hub 直连失败时自动换阿里云 / 1ms），
+并把 `server/config.py` 里的 `APP_VERSION` 打进本地镜像 tag。
+
+---
+
+## 六、应用图标（含将来的飞牛 fpk）
 
 图标是一件而不是两件东西，避免「网页一个样、安装包里又是旧图」：
 
 | 文件 | 用途 |
 |---|---|
-| `web/assets/viaexif.svg` | **母版**（矢量，160×160，圆角 30）。页头 26px 标记、favicon、apple-touch-icon 都用它 |
+| `web/assets/viaexif.svg` | **母版**（矢量，160×160，圆角 30）。页头标记、favicon、apple-touch-icon 都用它 |
 | `web/assets/icons/icon-<n>.png` | 由母版栅格化：16 / 32 / 48 / 64 / 128 / 180 / 192 / 256 / 512 |
 
 母版改了之后重出一套（透明底，圆角外是空的）：

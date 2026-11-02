@@ -17,7 +17,10 @@ if docker compose version >/dev/null 2>&1; then DC="docker compose"; else DC="do
 MODE="${1:-up}"
 PRIMARY_BASE="python:3.12-slim"
 FALLBACK_BASE="registry.cn-hangzhou.aliyuncs.com/library/python:3.12-slim"
-LOCAL_IMAGE="viaexif:1.1.2"
+# 版本号只有一处来源：server/config.py 的 APP_VERSION。写死在这里的话，
+# 每升一次版本就有一个地方会忘记改，打出来的镜像 tag 和 /api/health 从此对不上。
+APP_VERSION="$(sed -n 's/^APP_VERSION *= *"\([^"]*\)".*/\1/p' server/config.py | head -1)"
+LOCAL_IMAGE="viaexif:${APP_VERSION:-dev}"
 REMOTE_IMAGE="${VIAEXIF_IMAGE:-ghcr.io/ija-wang/viaexif:latest}"
 
 build() {
