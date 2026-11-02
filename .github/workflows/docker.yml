@@ -1,14 +1,15 @@
 name: docker
 
-# Builds the image and publishes it to two registries, so it can be found from a
-# NAS "image registry" browser (fnOS / 群晖 / Unraid all search Docker Hub) and
-# pulled directly from GHCR.
+# Builds the image, publishes it to GHCR (and optionally Docker Hub), then runs
+# the published image and exercises the decode pipeline against it. The smoke
+# job is what catches libgomp / libheif packaging regressions — a build can
+# succeed while `import rawpy` fails at runtime.
 #
 # Repo configuration (Settings → Secrets and variables → Actions):
 #   Variables: DOCKERHUB_USERNAME   e.g. ija            (optional)
 #   Secrets:   DOCKERHUB_TOKEN      Access Token, Read & Write (optional)
-# With them unset the workflow still builds and pushes to GHCR only, using the
-# built-in GITHUB_TOKEN — no setup required to get a working image.
+# With them unset the workflow still builds and publishes to GHCR only, using
+# the built-in GITHUB_TOKEN — no setup required to get a working image.
 
 on:
   push:
@@ -38,6 +39,8 @@ jobs:
     permissions:
       contents: read
       packages: write # required to push to ghcr.io
+    outputs:
+      image: ${{ steps.primary.outputs.tag }}
 
     steps:
       - uses: actions/checkout@v4
@@ -54,6 +57,16 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable={{is_default_branch}}
+
+      # metadata-action emits a newline-separated list whose order follows the
+      # `images:` block; pin the GHCR tag so the smoke job never depends on that
+      # ordering or on Docker Hub being configured.
+      - name: Resolve the GHCR reference
+        id: primary
+        run: |
+          tag=$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | grep '^ghcr\.io/' | head -n1)
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "smoke-testing $tag"
 
       - uses: docker/setup-qemu-action@v3
         if: contains(inputs.platforms || 'linux/amd64', 'arm64')
@@ -87,3 +100,87 @@ jobs:
           cache-to: type=gha,mode=max
           provenance: true
           sbom: true
+
+  # Pull the artifact that was actually published (not a local rebuild) and run
+  # the real container: static assets, HEIC decode, RAW decode, HEIC encode.
+  smoke:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_dispatch' || inputs.push
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull the published image
+        run: docker pull "${{ needs.build.outputs.image }}"
+
+      - name: Start the container
+        run: docker run -d --name vx -p 8080:8080 "${{ needs.build.outputs.image }}"
+
+      - name: Wait for /api/health
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 40); do
+            if curl -fsS -m 3 http://127.0.0.1:8080/api/health -o /tmp/health.json; then
+              jq . /tmp/health.json
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::health check never came up"
+          docker logs vx
+          exit 1
+
+      - name: Smoke test the decode pipeline
+        run: |
+          set -euo pipefail
+          B=http://127.0.0.1:8080
+
+          echo "--- static app ---"
+          curl -fsS "$B/" | grep -q viaEXIF
+
+          echo "--- capabilities ---"
+          caps=$(curl -fsS "$B/api/health")
+          for k in heic raw heicEncode; do
+            v=$(printf '%s' "$caps" | jq -r ".decode.$k")
+            echo "  $k = $v"
+            [ "$v" = "true" ] || { echo "::error::$k unavailable in the published image"; exit 1; }
+          done
+
+          echo "--- HEIC decode ---"
+          curl -fsS -F "file=@tests/fixtures/sample.heic" "$B/api/decode" -o /tmp/heic.json
+          jq -e '.kind == "heic"' /tmp/heic.json > /dev/null
+          tok=$(jq -r .token /tmp/heic.json)
+          curl -fsS "$B/api/decode/$tok" -o /tmp/heic.jpg
+          file /tmp/heic.jpg | grep -q JPEG
+          sz=$(stat -c%s /tmp/heic.jpg); echo "  jpeg = $sz bytes"
+          [ "$sz" -gt 1000 ]
+
+          echo "--- RAW decode ---"
+          curl -fsS -F "file=@tests/fixtures/synthetic.dng" "$B/api/decode" -o /tmp/raw.json
+          jq -e '.kind == "raw"' /tmp/raw.json > /dev/null
+
+          echo "--- HEIC encode ---"
+          ct=$(curl -fsS -o /tmp/out.heic -w '%{content_type}' \
+            -F "file=@tests/fixtures/sample.png" \
+            -F "format=image/heic" "$B/api/encode")
+          echo "  content-type = $ct"
+          [ "$ct" = "image/heic" ]
+
+      - name: Dump container logs
+        if: failure()
+        run: docker logs vx || true
+
+      - name: Stop the container
+        if: always()
+        run: docker rm -f vx || true
