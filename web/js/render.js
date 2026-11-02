@@ -137,8 +137,12 @@ function drawBrandMark(ctx, opts, x, y, h, align) {
   if (logoImg && brand.logo) {
     if (brand.tint) {
       // repaint the neutral ink in the template's text colour, keep brand hues
-      tintMark(logoImg, w, h, spec.colors.text);
-      ctx.drawImage(scratch, 0, 0, Math.ceil(w), Math.ceil(h), left, y, w, h);
+      const cw = tintMark(logoImg, w, h, spec.colors.text);
+      const ch = Math.max(1, Math.ceil(h));
+      // 1:1 copy. Stretching the ceil()ed scratch back into the fractional
+      // w/h squeezed its last pixel column into a sub-pixel sliver, which
+      // showed up as a grey hairline stuck to the right of the mark.
+      ctx.drawImage(scratch, 0, 0, cw, ch, left, y, cw, ch);
     } else {
       ctx.drawImage(logoImg, left, y, w, h);
     }
@@ -206,7 +210,10 @@ function drawClassic(ctx, canvas, image, W, H, opts) {
   const padX = W * L.barPadX;
   const params = fields.params;
   const gap = barH * L.gap;
-  const divW = Math.max(1, barH * L.dividerW);
+  // The rule between the brand mark and the params. It is a slider ratio of W
+  // and defaults to 0: the 1px rule sits right beside the logo, so at watermark
+  // size it read as a stray line stuck to the mark rather than a separator.
+  const divW = opts.dividerW != null ? W * opts.dividerW : Math.max(1, barH * L.dividerW);
 
   // ---- 1) size the right block first, capped at 58% of the canvas width
   let paramF = font(barH * L.paramFont, 500);
@@ -251,9 +258,11 @@ function drawClassic(ctx, canvas, image, W, H, opts) {
 
     if (brand) {
       const divX = paramLeft - gap - divW;
-      const divH = barH * L.dividerH;
-      ctx.fillStyle = C.divider;
-      ctx.fillRect(divX, cy - divH / 2, divW, divH);
+      if (divW > 0) {
+        const divH = barH * L.dividerH;
+        ctx.fillStyle = C.divider;
+        ctx.fillRect(divX, cy - divH / 2, divW, divH);
+      }
 
       drawBrandMark(ctx, opts, divX - gap, cy - markH / 2, markH, "right");
     }

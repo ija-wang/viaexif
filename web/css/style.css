@@ -159,7 +159,8 @@ html[data-theme="light"] .grain { opacity: .035; mix-blend-mode: multiply; }
 }
 
 .brand { display: flex; align-items: center; gap: 9px; }
-.brand .mark { width: 26px; height: 26px; color: var(--accent); }
+/* the app icon carries its own dark rounded tile, so no colour/radius here */
+.brand .mark { width: 26px; height: 26px; display: block; border-radius: 7px; }
 .brand-name { font-weight: 650; letter-spacing: .2px; }
 .chip {
   font-size: 11px;

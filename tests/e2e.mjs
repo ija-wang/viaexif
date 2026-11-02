@@ -109,22 +109,36 @@ try {
     });
     const slabs = [];
     const skewed = [];
+    const notUniform = [];
+    const bleed = [];
     for (const b of cfg.brands) {
       const res = await fetch('/assets/brands/' + b.logo);
       const vb = (await res.text()).match(/viewBox="([^"]+)"/)[1].trim().split(/[\\s,]+/).map(Number);
       const real = vb[2] / vb[3];
       if (Math.abs(real / b.aspect - 1) > 0.02) skewed.push(b.key + ' ' + b.aspect + ' vs ' + real.toFixed(3));
+      // Every file is normalised to the same canvas height; the renderer keys
+      // its width off the aspect, so a stray height would silently rescale.
+      if (Math.abs(vb[3] - 200) > 0.01) notUniform.push(b.key + ' h=' + vb[3]);
 
       const img = await load('/assets/brands/' + b.logo);
-      const W = 120, H = Math.max(1, Math.round(W / (b.aspect || 3)));
+      // Height-driven, like the renderer: a width-driven box makes wide marks
+      // 20px tall, where the 2% pad is sub-pixel and the edge test lies.
+      const H = 140, W = Math.max(1, Math.round(H * (b.aspect || 3)));
       const c = document.createElement('canvas'); c.width = W; c.height = H;
       c.getContext('2d').drawImage(img, 0, 0, W, H);
       const d = c.getContext('2d').getImageData(0, 0, W, H).data;
       let ink = 0;
       for (let i = 3; i < d.length; i += 4) if (d[i] > 200) ink += 1;
       if (ink / (W * H) > 0.98) slabs.push(b.key);
+      // ...and the 2% pad has to survive rasterisation: ink on the outer 1px
+      // ring means the mark gets shaved at every export size.
+      const alphaAt = (x, y) => d[(y * W + x) * 4 + 3];
+      let edge = 0;
+      for (let x = 0; x < W; x += 1) edge = Math.max(edge, alphaAt(x, 0), alphaAt(x, H - 1));
+      for (let y = 0; y < H; y += 1) edge = Math.max(edge, alphaAt(0, y), alphaAt(W - 1, y));
+      if (edge > 60) bleed.push(b.key);
     }
-    return { slabs, skewed };
+    return { slabs, skewed, notUniform, bleed };
   })()`);
   // A few marks *are* solid tiles by design (the Nikon and realme yellow
   // plates are the logo, not a leftover backdrop), so those are expected.
@@ -133,6 +147,8 @@ try {
   const straySlabs = brandAudit.slabs.filter((k) => !SOLID.includes(k));
   check("no logo ships a stray full-canvas backdrop", straySlabs.length === 0, straySlabs.join(","));
   check("every brand aspect matches its viewBox", brandAudit.skewed.length === 0, brandAudit.skewed.join("; "));
+  check("every brand canvas is the same height", brandAudit.notUniform.length === 0, brandAudit.notUniform.join("; "));
+  check("no brand ink touches the canvas edge", brandAudit.bleed.length === 0, brandAudit.bleed.join(","));
 
   await send("Emulation.setDeviceMetricsOverride", { width: 1600, height: 1000, deviceScaleFactor: 1, mobile: false });
   const homeShot = await send("Page.captureScreenshot", { format: "png" });
@@ -235,6 +251,24 @@ try {
     return [p[0], p[1], p[2]];
   })()`);
   check("classic bottom-left is the white bar", classicPix[0] > 245 && classicPix[1] > 245 && classicPix[2] > 245, JSON.stringify(classicPix));
+
+  // The rule between logo and params used to be hard-wired at 1px, which read as
+  // a stray line stuck to the brand mark. It is now a slider that defaults to 0
+  // — and it has to *do* something, or it is another dead control.
+  const divider = await evaluate(`(async () => {
+    const s = document.getElementById('s-dividerW');
+    const c = document.getElementById('preview');
+    const label = document.getElementById('v-dividerW').textContent;
+    const settle = () => new Promise((r) => setTimeout(r, 320));
+    s.value = 0; s.dispatchEvent(new Event('input')); await settle();
+    const off = c.toDataURL();
+    s.value = 0.004; s.dispatchEvent(new Event('input')); await settle();
+    const on = c.toDataURL();
+    s.value = 0; s.dispatchEvent(new Event('input')); await settle();
+    return { label, differs: off !== on };
+  })()`);
+  check("divider slider defaults to 0px", divider.label === "0px", divider.label);
+  check("divider slider actually draws the rule", divider.differs, String(divider.differs));
 
   const metrics = await evaluate(`({
     dpr: window.devicePixelRatio,

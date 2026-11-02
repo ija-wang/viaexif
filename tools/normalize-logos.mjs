@@ -6,8 +6,14 @@
  * height at wildly different *visual* heights. This tool trims every file to its
  * ink bounding box, so `height` in the renderer means "tallest ink pixel".
  *
+ * It then rewrites the canvas to a single common height (UNIFORM_H) with a 2%
+ * safety pad, so the files themselves are interchangeable: same height, same
+ * units, aspect preserved. Without the pad, marks whose ink touches x=0 (DJI)
+ * lose their outermost pixel to the canvas edge at every size.
+ *
  * It also removes full-canvas white backdrop shapes (Nikon, ZTE, ...) — those
- * paint a white slab on the dark/blur template.
+ * paint a white slab on the dark/blur template — and any artwork listed in
+ * DROP_BELOW (GoPro's four leftover bars).
  *
  * Usage:
  *   node tools/normalize-logos.mjs            # rewrite files in place
@@ -23,6 +29,21 @@ const BRANDS_DIR = path.join(ROOT, "web/assets/brands");
 const EDGE = process.env.EDGE || "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
 const PORT = Number(process.env.CDP_PORT || 9351);
 const CHECK_ONLY = process.argv.includes("--check");
+
+/** Every mark ends up exactly this tall in its own user units. */
+const UNIFORM_H = 200;
+/** Ink padding, as a fraction of the ink height, on all four sides. */
+const PAD = 0.02;
+/**
+ * Leftover artwork to drop, by geometry rather than by element order: any
+ * top-level shape whose top edge sits below `ratio × canvas height` goes.
+ *
+ * GoPro's export carries four solid bars underneath the wordmark — they are
+ * not part of the logo, and at watermark size they read as a black blocky
+ * underline. Nothing else is listed: the full-canvas plates on Nikon / realme /
+ * Xiaomi are the marks themselves.
+ */
+const DROP_BELOW = { "gopro.svg": 0.5 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -97,7 +118,7 @@ const PAGE_JS = String.raw`
     return n;
   }
 
-  window.__norm = (items) => items.map(({ file, svg }) => {
+  window.__norm = (items, cfg) => items.map(({ file, svg }) => {
     host.innerHTML = svg;
     const root = host.querySelector("svg");
     if (!root) return { file, error: "no <svg>" };
@@ -107,14 +128,34 @@ const PAGE_JS = String.raw`
     if (vb.length !== 4 || !vb.every(Number.isFinite)) return { file, error: "bad viewBox" };
     const [, , vbW, vbH] = vb;
 
-    // ---- 1) drop white shapes that cover (almost) the whole canvas
-    // Only white/blank slabs are removed. A *coloured* full-canvas backdrop
-    // has to be judged by a human: for most brands it is a bug (Nikon and
-    // realme both shipped a yellow slab that painted a block behind the mark),
-    // but Xiaomi's orange squircle is the real logo. tests/e2e.mjs guards the
-    // result with a pixel-coverage check, which is the only reliable test —
-    // bounding boxes are useless once the viewBox has been trimmed to the ink.
+    // ---- 0) unwrap a previous run, so the tool is idempotent
+    const prev = root.querySelector(":scope > g[data-fit]");
+    if (prev) {
+      while (prev.firstChild) root.insertBefore(prev.firstChild, prev);
+      prev.remove();
+    }
+
     const removed = [];
+
+    // ---- 1) drop leftover artwork that sits in its own band below the mark
+    const dropBelow = cfg.dropBelow[file];
+    if (dropBelow != null) {
+      for (const el of Array.from(root.querySelectorAll("path,rect,polygon,circle,ellipse"))) {
+        if (!topLevel(el)) continue;
+        let bb0;
+        try { bb0 = el.getBBox(); } catch { continue; }
+        if (bb0.y >= vbH * dropBelow) {
+          removed.push("stray-" + el.tagName.toLowerCase());
+          el.remove();
+        }
+      }
+    }
+
+    // ---- 2) drop white shapes that cover (almost) the whole canvas
+    // Only white/blank slabs are removed. A *coloured* full-canvas backdrop
+    // has to be judged by a human: for most brands it is a bug, but Nikon's
+    // yellow tile, realme's yellow plate and Xiaomi's orange squircle ARE the
+    // logo. tests/e2e.mjs guards the result with a pixel-coverage check.
     for (const el of Array.from(root.querySelectorAll("rect,path,polygon,circle,ellipse"))) {
       if (!topLevel(el)) continue;
       const cs = getComputedStyle(el);
@@ -134,9 +175,21 @@ const PAGE_JS = String.raw`
     try { bb = root.getBBox(); } catch (e) { return { file, error: "getBBox: " + e.message }; }
     if (!bb || !bb.width || !bb.height) return { file, error: "empty artwork", removed };
 
-    // ---- 3) rewrite viewBox tightly, drop fixed pixel size
-    root.setAttribute("viewBox", [bb.x, bb.y, bb.width, bb.height]
-      .map((n) => +n.toFixed(4)).join(" "));
+    // ---- 3) uniform canvas: scale the trimmed ink to a common height, keep
+    // its aspect, and leave a 2% pad so the outermost ink is never shaved by
+    // the canvas edge (DJI's letters start at x=0.02).
+    const padPx = bb.height * cfg.pad;
+    const k = cfg.uniformH / (bb.height + padPx * 2);
+    const box = document.createElementNS(root.namespaceURI, "g");
+    box.setAttribute("data-fit", "1");
+    box.setAttribute("transform",
+      "scale(" + (+k.toFixed(6)) + ") translate("
+      + (+(-(bb.x - padPx)).toFixed(4)) + " " + (+(-(bb.y - padPx)).toFixed(4)) + ")");
+    while (root.firstChild) box.appendChild(root.firstChild);
+    root.appendChild(box);
+
+    const outW = (bb.width + padPx * 2) * k;
+    root.setAttribute("viewBox", "0 0 " + (+outW.toFixed(4)) + " " + cfg.uniformH);
     root.removeAttribute("width");
     root.removeAttribute("height");
     root.removeAttribute("x");
@@ -148,7 +201,7 @@ const PAGE_JS = String.raw`
       removed,
       before: { w: vbW, h: vbH },
       box: { x: +bb.x.toFixed(3), y: +bb.y.toFixed(3), w: +bb.width.toFixed(3), h: +bb.height.toFixed(3) },
-      aspect: +(bb.width / bb.height).toFixed(4),
+      aspect: +(outW / cfg.uniformH).toFixed(4),
       svg: out,
     };
   });
@@ -166,7 +219,9 @@ const files = (await readdir(BRANDS_DIR)).filter((f) => f.endsWith(".svg")).sort
 
 async function runBatch(items) {
   const res = await send("Runtime.evaluate", {
-    expression: `window.__norm(${JSON.stringify(items)})`,
+    expression: `window.__norm(${JSON.stringify(items)}, ${JSON.stringify({
+      dropBelow: DROP_BELOW, uniformH: UNIFORM_H, pad: PAD,
+    })})`,
     returnByValue: true,
     awaitPromise: false,
   });

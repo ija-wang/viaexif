@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+  <defs>
+    <style>
+      .cls-1, .cls-2 {
+        fill: #c9caca;
+      }
+
+      .cls-3 {
+        fill: red;
+      }
+
+      .cls-4 {
+        fill: #fcded3;
+      }
+
+      .cls-5 {
+        fill: #f9bda7;
+      }
+
+      .cls-6 {
+        letter-spacing: 0em;
+      }
+
+      .cls-7 {
+        fill: #f47b50;
+      }
+
+      .cls-8 {
+        fill: #333;
+      }
+
+      .cls-9 {
+        fill: #f15a24;
+      }
+
+      .cls-10 {
+        letter-spacing: .03em;
+      }
+
+      .cls-11 {
+        letter-spacing: .02em;
+      }
+
+      .cls-2 {
+        font-family: Bebas, "Bebas Neue", Impact, "Haettenschweiler", "Arial Narrow", sans-serif;
+        font-size: 17.64px;
+      }
+
+      .cls-12 {
+        fill: #f79c7c;
+      }
+    </style>
+  </defs>
+  <g id="_图层_2" data-name="图层 2">
+    <rect class="cls-8" width="160" height="160" rx="30" ry="30"/>
+    <text class="cls-2" transform="translate(109.89 149.19)"><tspan x="0" y="0">E</tspan><tspan class="cls-11" x="8.37" y="0">X</tspan><tspan class="cls-10" x="19.07" y="0">I</tspan><tspan class="cls-6" x="23.56" y="0">F</tspan></text>
+    <rect class="cls-1" x="18.18" y="133.48" width="69.62" height="3"/>
+    <rect class="cls-1" x="36.04" y="139.83" width="31.84" height="3"/>
+    <rect class="cls-1" x="54.01" y="146.19" width="24.17" height="3"/>
+    <circle class="cls-3" cx="35.36" cy="38.05" r="9.27"/>
+  </g>
+  <g id="_图层_3" data-name="图层 3">
+    <g>
+      <path class="cls-5" d="M131.55,22.04H28.45c-5.67,0-10.27,5.23-10.27,11.68v77.34c0,6.45,4.6,11.68,10.27,11.68h103.11c5.67,0,10.27-5.23,10.27-11.68V33.72c0-6.45-4.6-11.68-10.27-11.68ZM26.08,38.05c0-5.12,4.15-9.27,9.27-9.27s9.27,4.15,9.27,9.27c0,5.12-4.15,9.27-9.27,9.27h0c-5.12,0-9.27-4.15-9.27-9.27ZM29.19,110.54v-31.25l38.87-28.31,38.89,59.56H29.19Z"/>
+      <path class="cls-12" d="M90.31,22.04c-24.37,5.57-43.62,24.58-49.53,48.83l27.28-19.88,38.89,59.56h-63.58c1.66,4.27,3.76,8.36,6.26,12.19h81.92c5.67,0,10.27-5.23,10.27-11.68V33.72c0-.8-.07-1.59-.21-2.38-6.61-4.38-13.97-7.53-21.7-9.3h-29.6Z"/>
+      <path class="cls-7" d="M124.9,47.61c-18.19,0-34.38,8.54-44.78,21.84l26.84,41.09h-38.55c.44,4.15,1.34,8.24,2.69,12.19h60.47c5.67,0,10.27-5.23,10.27-11.68v-60.88c-5.48-1.7-11.19-2.57-16.92-2.56Z"/>
+      <path class="cls-9" d="M98.38,97.42l8.57,13.12h-14.19c-1.13,3.98-1.83,8.06-2.07,12.19h40.87c5.67,0,10.27-5.23,10.27-11.68v-41.42c-18.53,1.81-34.45,12.51-43.44,27.79Z"/>
+      <path class="cls-4" d="M106.74,110.84h23.85v-27.79l-38.87-25.19-10.14,13.81,25.16,39.17Z"/>
+    </g>
+  </g>
+</svg>
