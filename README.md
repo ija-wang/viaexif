@@ -1,5 +1,7 @@
 # viaEXIF · self-host
 
+[![docker](https://github.com/ija-wang/viaexif/actions/workflows/docker.yml/badge.svg)](https://github.com/ija-wang/viaexif/actions/workflows/docker.yml)
+
 相机水印生成器的自托管实现：读取照片 EXIF，在图上叠一条参数横幅或模糊边框，导出 JPEG / PNG / WEBP / HEIC。
 
 JPG / PNG / WEBP 全程在浏览器 Canvas 里处理，原图不出设备；**HEIC / HEIF / AVIF 和 30+ 种相机 RAW** 浏览器解不了，交给同一个容器里的 libheif / libraw 解码一次（原文件不落盘，解码帧 15 分钟后从内存清除）。
@@ -49,9 +51,11 @@ docker pull ghcr.io/ija-wang/viaexif:latest
 ## 快速开始
 
 ```bash
-docker compose up -d --build
+docker compose up -d          # 拉 GHCR 上的现成镜像
 # 打开 http://localhost:8080
 ```
+
+想从源码构建：把 `docker-compose.yml` 里 `# build: .` 的注释去掉，再 `docker compose up -d --build`。
 
 纯 docker，不用 compose：
 
@@ -63,17 +67,16 @@ docker run -d --name viaexif -p 8080:8080 -v "$PWD/data:/data" viaexif:1.1.0
 ## 部署到 fnOS / NAS
 
 ```bash
-# 1) 同步源码（已同步过则在 NAS 上直接第 2 步）
-scp -r viaexif ija@192.168.50.222:/home/ija/
+# 1) 拉现成镜像并启动（最快，不编译；ija 不在 docker 组，必须 sudo）
+ssh -t ija@192.168.50.222 "sudo bash /home/ija/viaexif/deploy/build.sh pull"
 
-# 2) 构建镜像 + 启动（ija 不在 docker 组，必须 sudo；会提示输入密码）
-ssh -t ija@192.168.50.222 "sudo bash /home/ija/viaexif/deploy/build.sh"
-
-# 3) 查看
+# 2) 查看
 ssh ija@192.168.50.222 "sudo bash /home/ija/viaexif/deploy/build.sh status"
 ```
 
-`build.sh` 做的事：`docker build -t viaexif:1.1.0` → 失败自动回退阿里云基础镜像 → `compose up -d` → 轮询健康检查 → 打印镜像大小与访问地址。
+`pull` 模式：`docker pull ghcr.io/ija-wang/viaexif:latest`（失败自动换 `ghcr.1ms.run` 前缀）→ `compose up -d` → 轮询健康检查 → 打印镜像与访问地址。
+
+想从源码构建（NAS 上已同步源码）就把 `pull` 去掉，`up` 模式会 `docker build -t viaexif:1.1.0`，失败自动回退阿里云基础镜像。
 
 国内网络备选（直连 Docker Hub 超时时手动指定基础镜像）：
 

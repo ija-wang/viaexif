@@ -51,10 +51,12 @@ cat ~/.ssh/id_ed25519.pub    # 复制整行，Title 随便填，Key type 选 Aut
 
 | Registry | 镜像地址 | 需要的配置 |
 |---|---|---|
-| GHCR | `ghcr.io/<用户名>/viaexif:latest` | 无，用仓库自带的 `GITHUB_TOKEN` |
+| GHCR | `ghcr.io/ija-wang/viaexif:latest` | 无，用仓库自带的 `GITHUB_TOKEN` |
 | Docker Hub | `docker.io/<用户名>/viaexif:latest` | 见下 |
 
 Docker Hub 是**可选**的：没配就只推 GHCR，工作流照样绿。
+
+构建完成后还有一个 `smoke` job：它把**刚推上去的那个镜像**真的拉下来跑起来，验证静态页、`/api/health` 的能力位（`heic` / `raw` / `heicEncode`）、HEIC 解码、RAW 解码、HEIC 编码。构建绿只说明轮子装上了，`libgomp` / `libheif` 的运行时问题要到导入时才炸 —— 这一层由它兜住。
 
 ### 想让 CI 也推 Docker Hub
 
@@ -123,6 +125,9 @@ ghcr.1ms.run/ija-wang/viaexif:latest
 ```
 
 拉完在「本地镜像」里就有了，点运行即可。这条路不依赖 Docker Hub，最稳。
+
+> **2026-11-02 实测**：`ghcr.io/ija-wang/viaexif` 的两个 tag（`latest` / `main`）匿名 token 即可取到 manifest，包是 public；
+> 从 `ijaHub`（192.168.50.222）发起同样的请求返回 `manifest:200`，说明这台 NAS 直连 GHCR 就能拉，不需要额外配镜像源。
 
 #### 路 B：用 Compose 装（能开机自启、带健康检查）
 

@@ -1,7 +1,10 @@
 services:
   viaexif:
-    build: .
-    image: viaexif:1.1.0
+    # 默认拉现成镜像；从源码构建时由 deploy/build.sh 把 VIAEXIF_IMAGE 覆盖成
+    # 本地 tag，这样 compose 不会在构建后又去 registry 拉一遍。
+    image: ${VIAEXIF_IMAGE:-ghcr.io/ija-wang/viaexif:latest}
+    # 想直接在本目录构建就取消下一行注释（配合 docker compose up --build）
+    # build: .
     container_name: viaexif
     restart: unless-stopped
     ports:
