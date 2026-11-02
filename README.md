@@ -60,8 +60,8 @@ docker compose up -d          # 拉 GHCR 上的现成镜像
 纯 docker，不用 compose：
 
 ```bash
-docker build -t viaexif:1.1.0 .
-docker run -d --name viaexif -p 8080:8080 -v "$PWD/data:/data" viaexif:1.1.0
+docker build -t viaexif:1.1.1 .
+docker run -d --name viaexif -p 8080:8080 -v "$PWD/data:/data" viaexif:1.1.1
 ```
 
 ## 部署到 fnOS / NAS
@@ -76,12 +76,16 @@ ssh ija@192.168.50.222 "sudo bash /home/ija/viaexif/deploy/build.sh status"
 
 `pull` 模式：`docker pull ghcr.io/ija-wang/viaexif:latest`（失败自动换 `ghcr.1ms.run` 前缀）→ `compose up -d` → 轮询健康检查 → 打印镜像与访问地址。
 
-想从源码构建（NAS 上已同步源码）就把 `pull` 去掉，`up` 模式会 `docker build -t viaexif:1.1.0`，失败自动回退阿里云基础镜像。
+想从源码构建（NAS 上已同步源码）就把 `pull` 去掉，`up` 模式会 `docker build -t viaexif:1.1.1`，失败自动回退阿里云基础镜像。
+
+> 用 `http://192.168.x.x:端口` 直接访问就行，不必上 HTTPS。内网明文 HTTP 属于**非安全上下文**，
+> 页面里所有依赖它的 API 都有回退（`crypto.randomUUID` → `getRandomValues`，`navigator.clipboard` → `execCommand`），
+> 所以换到局域网 IP 访问不会有额外限制。
 
 国内网络备选（直连 Docker Hub 超时时手动指定基础镜像）：
 
 ```bash
-sudo docker build -t viaexif:1.1.0 \
+sudo docker build -t viaexif:1.1.1 \
   --build-arg BASE_IMAGE=registry.cn-hangzhou.aliyuncs.com/library/python:3.12-slim .
 ```
 
@@ -92,9 +96,9 @@ sudo docker build -t viaexif:1.1.0 \
 在任意已构建成功的机器上：
 
 ```bash
-docker save viaexif:1.1.0 | gzip > viaexif-1.1.0.tar.gz   # 约 160MB
-scp viaexif-1.1.0.tar.gz ija@192.168.50.222:/home/ija/
-ssh -t ija@192.168.50.222 "gunzip -c /home/ija/viaexif-1.1.0.tar.gz | sudo docker load"
+docker save viaexif:1.1.1 | gzip > viaexif-1.1.1.tar.gz   # 约 160MB
+scp viaexif-1.1.1.tar.gz ija@192.168.50.222:/home/ija/
+ssh -t ija@192.168.50.222 "gunzip -c /home/ija/viaexif-1.1.1.tar.gz | sudo docker load"
 ```
 
 ### 直接拉已发布的镜像

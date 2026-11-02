@@ -208,6 +208,34 @@ try {
   check("batch zip completes", /已打包 3 张图片|已打包/.test(zipOk.toast), JSON.stringify(zipOk));
 
 
+  // Regression: served over plain http:// on a LAN IP the page is *not* a secure
+  // context, so crypto.randomUUID is undefined and every upload died with
+  // "crypto.randomUUID is not a function". Deleting it here reproduces that
+  // origin without needing a non-localhost host.
+  console.log("insecure context");
+  await evaluate(`(() => {
+    window.__ru = Crypto.prototype.randomUUID;
+    delete Crypto.prototype.randomUUID;
+    return typeof crypto.randomUUID;
+  })()`);
+  check("randomUUID removed for the test", (await evaluate("typeof crypto.randomUUID")) === "undefined");
+
+  const { nodeId: insecureNode } = await send("DOM.querySelector", { nodeId: doc.root.nodeId, selector: "#fileInput" });
+  await evaluate(`document.getElementById('toast').textContent = ''`);
+  await send("DOM.setFileInputFiles", { nodeId: insecureNode, files: [path.resolve("tests/fixtures/sample.heic")] });
+  const insecureReady = await evaluate(`(async () => {
+    for (let i = 0; i < 80; i += 1) {
+      const meta = document.getElementById('fileMeta').textContent;
+      if (meta.includes('sample.heic')) return true;
+      const t = document.getElementById('toast').textContent;
+      if (/not a function|读取失败/.test(t)) return t;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return document.getElementById('fileMeta').textContent;
+  })()`);
+  check("upload survives without crypto.randomUUID", insecureReady === true, String(insecureReady));
+  await evaluate(`(() => { if (window.__ru) Crypto.prototype.randomUUID = window.__ru; })()`);
+
   console.log("heic + live photo");
   const { nodeId: liveNode } = await send("DOM.querySelector", { nodeId: doc.root.nodeId, selector: "#fileInput" });
   await send("DOM.setFileInputFiles", {

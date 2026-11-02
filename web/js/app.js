@@ -29,6 +29,21 @@ const state = {
 
 const el = (id) => document.getElementById(id);
 
+/* `crypto.randomUUID` only exists in secure contexts — https, or localhost.
+ * A NAS served over plain http://192.168.x.x is not one, and calling it there
+ * throws "crypto.randomUUID is not a function". `getRandomValues` is the one
+ * WebCrypto member that works in insecure contexts, so fall back to it. */
+const uid = () => {
+  if (globalThis.crypto?.randomUUID) return crypto.randomUUID();
+  const bytes = new Uint8Array(16);
+  if (globalThis.crypto?.getRandomValues) {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+};
+
 /* ================================================================== boot */
 init();
 
@@ -516,7 +531,7 @@ async function addFiles(list) {
 
       const live = liveByStem.get(stemOf(file.name)) || null;
       state.files.push({
-        id: crypto.randomUUID(),
+        id: uid(),
         file,
         name: file.name,
         width,

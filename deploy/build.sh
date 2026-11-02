@@ -17,7 +17,7 @@ if docker compose version >/dev/null 2>&1; then DC="docker compose"; else DC="do
 MODE="${1:-up}"
 PRIMARY_BASE="python:3.12-slim"
 FALLBACK_BASE="registry.cn-hangzhou.aliyuncs.com/library/python:3.12-slim"
-LOCAL_IMAGE="viaexif:1.1.0"
+LOCAL_IMAGE="viaexif:1.1.1"
 REMOTE_IMAGE="${VIAEXIF_IMAGE:-ghcr.io/ija-wang/viaexif:latest}"
 
 build() {
