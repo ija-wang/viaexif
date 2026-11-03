@@ -75,10 +75,10 @@ token 只显示一次，务必当场复制。
 ### 打版本标签
 
 ```bash
-git tag v1.2.1 && git push origin v1.2.1
+git tag v1.2.2 && git push origin v1.2.2
 ```
 
-`docker/metadata-action` 会把 `v1.2.1` 展开成 `1.2.1`、`1.2`、`latest` 三个 tag。
+`docker/metadata-action` 会把 `v1.2.2` 展开成 `1.2.2`、`1.2`、`latest` 三个 tag。
 版本号以 `server/config.py: APP_VERSION` 为准，打标签前先确认它和这次的改动一致——
 `/api/health` 返回的 `version` 就是从这个常量来的，三者对不上时排障会很痛苦。
 
@@ -86,12 +86,14 @@ git tag v1.2.1 && git push origin v1.2.1
 
 ```bash
 curl -s http://<NAS-IP>:<端口>/api/health | grep -o '"version":"[^"]*"'   # 容器自报
-curl -sI http://<NAS-IP>:<端口>/ | grep -i cache-control                  # 应为 no-cache
+curl -sI http://<NAS-IP>:<端口>/ | grep -i cache-control                  # 应为 no-store
 ```
 
-页头那个 `vX.Y.Z` 标签取自 `/api/config`，是容器自己报的版本。它显示新版本而界面还是旧样子，
-说明问题在浏览器缓存而不是镜像——1.2.1 之前静态资源没有任何 `Cache-Control`，浏览器按
-「文件年龄的 10%」自行估算新鲜期，换镜像后仍然直接用旧 `app.js`，`ETag` 连问都没被问到。
+页头那个 `vX.Y.Z` 标签由服务端写进 HTML（不依赖前端 JS），和 `/api/config`、`/api/health`
+同源，所以它报的版本就是回答这次请求的容器版本。**标签是新的而界面还是旧的**，这只可能发生在
+1.2.2 之前：那时响应没有缓存头，浏览器按「文件年龄的 10%」自己估新鲜期，换镜像后继续用旧
+`app.js`，`ETag` 连问都没被问到。1.2.2 起除字体外全部 `no-store`，普通刷新即生效；
+只有从旧版本升上来的那一次需要强刷。
 
 ### 想同时出 ARM 镜像（群晖 ARM / 树莓派）
 
@@ -130,13 +132,13 @@ curl -s -o /dev/null -w '%{http_code}\n' https://ghcr.io/v2/
 飞牛 Docker → **镜像** → 右上角 **拉取** → 填完整地址：
 
 ```
-ghcr.io/<你的用户名>/viaexif:1.2.1
+ghcr.io/<你的用户名>/viaexif:1.2.2
 ```
 
 国内直连 `ghcr.io` 慢的话，用加速前缀（飞牛「仓库设置」里加的源也是同一个原理）：
 
 ```
-ghcr.1ms.run/<你的用户名>/viaexif:1.2.1
+ghcr.1ms.run/<你的用户名>/viaexif:1.2.2
 ```
 
 拉完在「本地镜像」里就有了，点运行即可。这条路不依赖 Docker Hub，最稳。
@@ -152,7 +154,7 @@ ghcr.1ms.run/<你的用户名>/viaexif:1.2.1
 ```yaml
 services:
   viaexif:
-    image: ghcr.io/<你的用户名>/viaexif:1.2.1
+    image: ghcr.io/<你的用户名>/viaexif:1.2.2
     container_name: viaexif
     restart: unless-stopped
     ports:
@@ -190,8 +192,8 @@ sudo docker run -d --name registry -p 5000:5000 \
 把本机构建好的镜像塞进去（在能跑 docker 的机器上）：
 
 ```bash
-docker tag viaexif:1.2.1 <NAS-IP>:5000/viaexif:1.2.1
-docker push <NAS-IP>:5000/viaexif:1.2.1
+docker tag viaexif:1.2.2 <NAS-IP>:5000/viaexif:1.2.2
+docker push <NAS-IP>:5000/viaexif:1.2.2
 ```
 
 NAS 的 `/etc/docker/daemon.json` 里要有 `insecure-registries` 并包含 `<NAS-IP>:5000`

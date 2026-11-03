@@ -114,8 +114,8 @@ docker compose up -d          # 拉 GHCR 上的现成镜像
 纯 docker，不用 compose：
 
 ```bash
-docker build -t viaexif:1.2.1 .
-docker run -d --name viaexif -p 8080:8080 -v "$PWD/data:/data" viaexif:1.2.1
+docker build -t viaexif:1.2.2 .
+docker run -d --name viaexif -p 8080:8080 -v "$PWD/data:/data" viaexif:1.2.2
 ```
 
 ## 部署到 NAS（fnOS / 群晖 / 任意 Linux）
@@ -141,7 +141,7 @@ sudo bash deploy/build.sh logs      # 跟随日志
 国内网络备选（直连 Docker Hub 超时时手动指定基础镜像）：
 
 ```bash
-sudo docker build -t viaexif:1.2.1 \
+sudo docker build -t viaexif:1.2.2 \
   --build-arg BASE_IMAGE=registry.cn-hangzhou.aliyuncs.com/library/python:3.12-slim .
 ```
 
@@ -151,7 +151,7 @@ sudo docker build -t viaexif:1.2.1 \
 所以别指望搜出来 —— 用「拉取镜像」直接填完整地址：
 
 ```
-ghcr.io/<你的用户名>/viaexif:1.2.1
+ghcr.io/<你的用户名>/viaexif:1.2.2
 ```
 
 拉完在「本地镜像」里点运行，映射容器端口 `8080`、挂一个持久化目录到 `/data` 即可。
@@ -176,27 +176,41 @@ sudo docker run -d --name viaexif --restart always -p 8080:8080 \
 `docker container update` 只能改资源项（CPU / 内存），**改不了 image**，别指望它升级。
 重建前一定先 `docker inspect` 对一遍挂载路径——漏掉 `-v` 会得到一个「能跑但数据是空」的容器。
 
-**换完镜像页面却像没变？先看页头的版本标签。** 那个 `v1.2.1` 是页面从 `/api/config` 拿到的、
-**当前容器自己报的**版本，不是写死在 HTML 里的字符串，所以它能区分两件完全不同的事：
+不想手抄参数就用仓库里的脚本，它把旧容器的 env / 挂载 / 端口 / 重启策略 / 标签原样复刻，
+只换镜像，并在新容器起不来时自动回滚：
+
+```bash
+sudo bash deploy/upgrade.sh                 # 换到 APP_VERSION 对应的镜像
+sudo bash deploy/upgrade.sh <镜像:tag>      # 换到指定镜像
+```
+
+**换完镜像页面却像没变？先看页头的版本标签。** 那个 `v1.2.2` 由服务端直接写进 HTML，
+和 `/api/config`、`/api/health` 同源，**是当前容器自己报的**，不是浏览器里那份 JS 猜的。
+所以它能区分两件完全不同的事：
 
 | 页头标签 | 含义 | 处理 |
 |---|---|---|
-| `v1.2.1`（新版本） | 镜像和缓存都是新的 | 没问题 |
+| `v1.2.2`（新版本） | 跑的就是这个镜像 | 没问题 |
 | 旧版本号 | 容器还跑着旧镜像 | 检查 `docker inspect` 里的 `Config.Image` |
-| 新版本号但界面还是旧的 | 浏览器缓存了旧 JS | `Ctrl/Cmd + Shift + R` 强刷一次 |
+| 标签是旧版、界面也旧 | 浏览器还在用 1.2.1 之前缓存的页面 | 强刷一次 `Ctrl/Cmd + Shift + R`，之后就自动了 |
 
-1.2.1 起静态资源带 `Cache-Control: no-cache`（每次使用前回源校验，`ETag` 没变就是 304），
-`/api/config` 是 `no-store`，正常情况下不会再出现第三行那种情况；只有从 1.2.0 及更早版本升上来时，
-浏览器里那份旧的 `app.js` 还按老规则「新鲜」着，需要强刷这一次。
+1.2.2 起除字体外全部 `Cache-Control: no-store`：**不存**，每次加载都向容器要，
+所以换镜像后普通刷新就能看到新界面，不存在「缓存还没过期」这种情况。字体是唯一例外
+（`max-age=604800, immutable`）——文件大、一个版本内不会变、文件名本身就按字面唯一。
+
+为什么 1.2.1 的 `no-cache` 没解决问题：`no-cache` 只写在**升级之后**发出的响应上。
+浏览器里那份 1.2.0 的 `app.js` 是在没有 `Cache-Control` 的年代存下的，它按「文件年龄的 10%」
+自估了一个新鲜期并一直沿用——不停容器、换镜像、重启浏览器都不会让它重新发问。
+只有一次强刷（或清站点数据）能把它换掉，而 `no-store` 保证这种事不会再有下一次。
 
 ### 镜像分发（不重新构建也能装）
 
 在任意已构建成功的机器上：
 
 ```bash
-docker save viaexif:1.2.1 | gzip > viaexif-1.2.1.tar.gz   # 约 160MB
-scp viaexif-1.2.1.tar.gz <你的用户>@<NAS-IP>:/tmp/
-ssh -t <你的用户>@<NAS-IP> "gunzip -c /tmp/viaexif-1.2.1.tar.gz | sudo docker load"
+docker save viaexif:1.2.2 | gzip > viaexif-1.2.2.tar.gz   # 约 160MB
+scp viaexif-1.2.2.tar.gz <你的用户>@<NAS-IP>:/tmp/
+ssh -t <你的用户>@<NAS-IP> "gunzip -c /tmp/viaexif-1.2.2.tar.gz | sudo docker load"
 ```
 
 ### 直接拉已发布的镜像
@@ -284,7 +298,7 @@ BASE_URL=http://127.0.0.1:8080 node tests/e2e.mjs
 ## 设计要点
 
 - **单一渲染引擎**：预览、单张下载、批量导出、分享全部走 `render.js`，不存在「预览好看导出崩」。
-- **构建身份可见、缓存可排除**：页头的 `vX.Y.Z` 标签来自 `/api/config`（`no-store`），是**容器自己报的**版本，不是写死在 HTML 里的字符串；静态资源一律 `Cache-Control: no-cache` + ETag，浏览器每次使用前回源校验，没变就 304。这两条合起来把「部署没生效」和「浏览器缓存」彻底分开——没有它们的时候，换了镜像但页面不变，看上去和部署失败一模一样。
+- **构建身份可见、缓存可排除**：页头的 `vX.Y.Z` 标签由服务端写进 HTML，和 `/api/config`、`/api/health` 同源，是**容器自己报的**版本，且不依赖前端 JS（JS 旧了或挂了也照报）；静态资源一律 `Cache-Control: no-store`（字体除外，7 天 `immutable`），浏览器不存副本，换镜像后普通刷新就是新界面。没有这两条的时候，换了镜像但页面不变，看上去和部署失败一模一样。
 - **配置单源**：所有版式比例只在 `server/config.py` 定义一次，前端通过 `/api/config` 获取，避免两端漂移。
 - **内存安全**：预览用 ≤1400px 的缩略位图；导出时才解码原图，用完 `close()`；批量逐张串行。
 - **照片比例零改动**：经典模板把白条接在照片的某一条边上（画布向那一侧扩张），模糊模板的内嵌图宽度固定、高度按原图宽高比换算，画布随之伸缩。两个模板都不裁切、不拉伸照片——3:2 进去还是 3:2，2:3 也一样。模糊模板的内嵌图默认**直角**：圆角会切掉画幅四角上真实拍到的像素，只有把「圆角」滑杆往右拉才会生效。
@@ -324,6 +338,7 @@ BASE_URL=http://127.0.0.1:8080 node tests/e2e.mjs
 
 | 版本 | 要点 |
 |---|---|
+| **1.2.2** | 缓存策略改为 `no-store`（除字体），换镜像后普通刷新即生效；版本号改由服务端写进 HTML，即使 JS 是旧的或加载失败，页头仍报得出当前容器版本。1.2.1 的 `no-cache` 只约束升级之后发出的响应，浏览器里更早的条目仍按自估新鲜期用着旧 `app.js`——这就是「重启容器和浏览器都没用」的原因 |
 | **1.2.1** | 静态资源改为 `Cache-Control: no-cache`（原来没有任何缓存头，浏览器按「文件年龄的 10%」自行估算新鲜期，换镜像后仍渲染旧 `app.js`）；`/api/config` 改为 `no-store`；页头新增版本标签，显示**容器自己报的**版本，一眼区分「镜像是新的」和「缓存是旧的」 |
 | **1.2.0** | 白条可放四边（横图默认下、竖图默认右，侧边内容沿长边转 90°）；新增字体选择（Maple Mono NF CN 全 16 个字面 + 系统字体，子集化后共 0.62 MB）；模糊模板补上时间戳（第三行、居中、与参数同字号）；新增 ZEISS 标并剔除其标语行；「统一高度」改为按墨迹实测并加断言 |
 | 1.1.9 | 文档重写：README / 发布说明 / 蒸馏报告全部按当前版本校对，截图重新生成；首页 RAW 计数（32 → 26）与配置对齐；`deploy/build.sh` 的本地镜像 tag 改为读 `APP_VERSION` |

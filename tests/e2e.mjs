@@ -103,6 +103,7 @@ try {
     const health = await (await fetch('/api/health', { cache: 'no-store' })).json();
     const html = await fetch('/', { cache: 'no-store' });
     const js = await fetch('/js/app.js', { cache: 'no-store' });
+    const font = await fetch('/assets/fonts/maple-mono-nf-cn-regular.woff2', { cache: 'no-store' });
     const cfg = await (await fetch('/api/config', { cache: 'no-store' })).json();
     return {
       chip: (document.getElementById('appVersion') || {}).textContent || '',
@@ -110,16 +111,33 @@ try {
       config: cfg.version,
       htmlCC: html.headers.get('cache-control') || '',
       jsCC: js.headers.get('cache-control') || '',
+      fontCC: font.headers.get('cache-control') || '',
+      served: await html.text(),
     };
   })()`);
   check("the page names the build it is running", build.chip === `v${build.config}`,
     `${build.chip} vs config ${build.config}`);
   check("that build is the one the container reports", build.config === build.health,
     `${build.config} vs health ${build.health}`);
+  // The stamp has to survive a stale or broken bundle — that is exactly when it
+  // is needed — so it is written into the markup by the server.
+  check("the build number is in the markup, not painted by the bundle",
+    build.served.includes(`v${build.config}`), `missing v${build.config}`);
+  check("no placeholder leaked into the shell", !build.served.includes("__APP_VERSION__"));
+  // A versioned URL is a different cache key, so an entry stored before this
+  // release cannot answer for the new bundle even on a browser that still holds
+  // it. Without this the shell would refresh and the JS would not.
+  check("entry assets carry the build in their URL",
+    build.served.includes(`./js/app.js?v=${build.config}`)
+      && build.served.includes(`./css/style.css?v=${build.config}`));
   // Heuristic freshness (no Cache-Control) is what made a redeployed container
   // keep serving the old app.js: the browser never asked, so ETag never helped.
-  check("the shell is revalidated, not heuristically cached", build.htmlCC === "no-cache", build.htmlCC);
-  check("the app bundle is revalidated too", build.jsCC === "no-cache", build.jsCC);
+  // `no-cache` still left pre-1.2.1 entries with their invented lifetime, so the
+  // shell and the bundle are now never stored at all.
+  check("the shell is never stored", build.htmlCC === "no-store", build.htmlCC);
+  check("the app bundle is never stored either", build.jsCC === "no-store", build.jsCC);
+  // Fonts are the deliberate exception: large, build-stable, uniquely named.
+  check("web fonts may be cached", /max-age=\d+/.test(build.fontCC), build.fontCC);
 
   check("two template cards", (await evaluate(`document.querySelectorAll('.tpl').length`)) === 2);
   check("brands rendered", (await evaluate(`(async()=>{document.getElementById('brandBtn').click();return document.querySelectorAll('#brandList .opt').length})()`)) >= 30);

@@ -21,7 +21,7 @@ import time
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
@@ -286,22 +286,54 @@ async def http_exc(request, exc: HTTPException):
 if not WEB_DIR.is_dir():
     raise RuntimeError(f"web assets missing: {WEB_DIR}")
 
-class RevalidatingStatic(StaticFiles):
-    """Serve the SPA so an upgraded container is visible without a hard refresh.
+class BuildFreshStatic(StaticFiles):
+    """Serve the SPA so an upgraded container is visible on the next reload.
 
+    Two rounds of "the NAS still shows the old build" came from the same cause:
     Starlette's default sends `Last-Modified` and `ETag` but no `Cache-Control`,
-    and a browser is then free to invent its own freshness lifetime — typically
-    10% of the file's age. A build that has been sitting on the NAS for two days
-    therefore looks "fresh" for nearly five hours, so after `docker` swaps the
-    image the browser keeps rendering the previous app.js without ever asking
-    the new container. `no-cache` does not mean "don't store": it means
-    "revalidate before use", which is exactly the ETag round-trip we want.
+    and a browser is then free to invent a freshness lifetime of its own —
+    typically 10% of the file's age. A build that had been sitting on the NAS
+    for two days therefore looked "fresh" for nearly five hours, so after
+    `docker` swapped the image the browser kept rendering the previous app.js
+    without ever asking the new container. `no-cache` (1.2.1) only fixed the
+    responses issued *after* the upgrade; an entry cached before it still keeps
+    its invented lifetime, which is why a restart changed nothing.
+
+    `no-store` is the honest answer for a LAN tool of this size: nothing here is
+    worth an offline hit, every asset is a few dozen kilobytes over gigabit, and
+    a deploy is then visible on a plain reload — no hard refresh, no devtools,
+    no "clear your cache". Web fonts are the one exception: they are large, they
+    never change inside a build, and the names are already unique per family.
     """
+
+    CACHEABLE_PREFIX = "assets/fonts/"
 
     async def get_response(self, path: str, scope):
         response = await super().get_response(path, scope)
-        response.headers["Cache-Control"] = "no-cache"
+        # Starlette normalises the mount-relative path with os.path, so on
+        # Windows it arrives back-slash separated; compare in one dialect.
+        probe = path.replace("\\", "/").lstrip("/")
+        if probe.startswith(self.CACHEABLE_PREFIX):
+            response.headers["Cache-Control"] = "public, max-age=604800, immutable"
+        else:
+            response.headers["Cache-Control"] = "no-store"
         return response
 
 
-app.mount("/", RevalidatingStatic(directory=WEB_DIR, html=True), name="web")
+@app.get("/", include_in_schema=False)
+@app.get("/index.html", include_in_schema=False)
+def index() -> HTMLResponse:
+    """The shell, stamped with the build that is answering.
+
+    The version lives in the markup rather than being painted by app.js: if the
+    bundle is stale or fails to load, the tab still says which container replied,
+    which is the whole point of the chip.
+    """
+    html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
+    return HTMLResponse(
+        html.replace("__APP_VERSION__", APP_VERSION),
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+app.mount("/", BuildFreshStatic(directory=WEB_DIR, html=True), name="web")
