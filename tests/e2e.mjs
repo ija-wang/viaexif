@@ -94,6 +94,33 @@ try {
   console.log("boot");
   check("no page errors on load", await evaluate(`!document.querySelector('.toast.err')`));
   check("config loaded", await evaluate(`window.__cfgOk = !!document.querySelectorAll('.tpl').length`));
+
+  console.log("build identity");
+  // A cache that hands back the previous build is indistinguishable from a
+  // failed deploy unless the page states which build it is. The chip is filled
+  // from /api/config, so it names the container that answered, not the bundle.
+  const build = await evaluate(`(async () => {
+    const health = await (await fetch('/api/health', { cache: 'no-store' })).json();
+    const html = await fetch('/', { cache: 'no-store' });
+    const js = await fetch('/js/app.js', { cache: 'no-store' });
+    const cfg = await (await fetch('/api/config', { cache: 'no-store' })).json();
+    return {
+      chip: (document.getElementById('appVersion') || {}).textContent || '',
+      health: health.version,
+      config: cfg.version,
+      htmlCC: html.headers.get('cache-control') || '',
+      jsCC: js.headers.get('cache-control') || '',
+    };
+  })()`);
+  check("the page names the build it is running", build.chip === `v${build.config}`,
+    `${build.chip} vs config ${build.config}`);
+  check("that build is the one the container reports", build.config === build.health,
+    `${build.config} vs health ${build.health}`);
+  // Heuristic freshness (no Cache-Control) is what made a redeployed container
+  // keep serving the old app.js: the browser never asked, so ETag never helped.
+  check("the shell is revalidated, not heuristically cached", build.htmlCC === "no-cache", build.htmlCC);
+  check("the app bundle is revalidated too", build.jsCC === "no-cache", build.jsCC);
+
   check("two template cards", (await evaluate(`document.querySelectorAll('.tpl').length`)) === 2);
   check("brands rendered", (await evaluate(`(async()=>{document.getElementById('brandBtn').click();return document.querySelectorAll('#brandList .opt').length})()`)) >= 30);
   await evaluate(`document.getElementById('brandBtn').click()`);

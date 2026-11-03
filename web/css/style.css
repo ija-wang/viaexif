@@ -171,6 +171,15 @@ html[data-theme="light"] .grain { opacity: .035; mix-blend-mode: multiply; }
   letter-spacing: .3px;
 }
 
+/* the version chip is filled after /api/config lands; no empty pill before that */
+#appVersion:empty {
+  display: none;
+}
+
+#appVersion {
+  font-variant-numeric: tabular-nums;
+}
+
 /* session stats — odometer-ish, tabular so the width never jumps */
 .stats {
   display: flex;

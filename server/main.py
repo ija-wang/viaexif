@@ -124,8 +124,9 @@ def health() -> dict:
 
 
 @app.get("/api/config")
-def config() -> dict:
-    return public_config()
+def config() -> JSONResponse:
+    # Carries APP_VERSION, so it must never outlive the container that answered.
+    return JSONResponse(public_config(), headers={"Cache-Control": "no-store"})
 
 
 async def _read_raw(upload: UploadFile, cap_bytes: int) -> bytes:
@@ -285,4 +286,22 @@ async def http_exc(request, exc: HTTPException):
 if not WEB_DIR.is_dir():
     raise RuntimeError(f"web assets missing: {WEB_DIR}")
 
-app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")
+class RevalidatingStatic(StaticFiles):
+    """Serve the SPA so an upgraded container is visible without a hard refresh.
+
+    Starlette's default sends `Last-Modified` and `ETag` but no `Cache-Control`,
+    and a browser is then free to invent its own freshness lifetime — typically
+    10% of the file's age. A build that has been sitting on the NAS for two days
+    therefore looks "fresh" for nearly five hours, so after `docker` swaps the
+    image the browser keeps rendering the previous app.js without ever asking
+    the new container. `no-cache` does not mean "don't store": it means
+    "revalidate before use", which is exactly the ETag round-trip we want.
+    """
+
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
+app.mount("/", RevalidatingStatic(directory=WEB_DIR, html=True), name="web")

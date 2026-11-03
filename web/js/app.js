@@ -70,6 +70,11 @@ async function init() {
   }
   state.font = localStorage.getItem("vx-font") || state.cfg.defaultFont;
 
+  // The version the *container* reports, not the one baked into this file. If a
+  // deploy ever half-lands again, this chip is the fastest way to tell "old
+  // image" from "new image, stale cache".
+  el("appVersion").textContent = `v${state.cfg.version}`;
+
   buildTemplateCards();
   buildBrandMenu();
   buildFields();
