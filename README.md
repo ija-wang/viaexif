@@ -19,7 +19,7 @@ docker pull ghcr.io/<你的用户名>/viaexif:latest
 
 ## 界面
 
-**经典模板**：白条默认放照片下方，横图竖图都一样从左读到右。
+**经典模板**：横图默认把白条接在照片下方，文字从左读到右。
 
 ![经典模板](docs/assets/screenshot-classic.png)
 
@@ -255,8 +255,8 @@ curl -o frame.jpg http://localhost:8080/api/decode/<token>
 
 ```bash
 python tests/gen_fixtures.py      # jpg/png/webp + HEIC + 实况 HEIC/MOV + 合成 Bayer DNG
-bash tests/run.sh                 # 72 项前端单测 + 35 项解码单测 + ZIP CRC 校验
-node tests/e2e.mjs                # 真实 Edge 走 CDP：50 项，含 HEIC/实况/RAW/HEIC 导出
+bash tests/run.sh                 # 75 项前端单测 + 35 项解码单测 + ZIP CRC 校验
+node tests/e2e.mjs                # 真实 Edge 走 CDP：75 项，含四边白条 / 字重 / HEIC / 实况 / RAW / HEIC 导出
 ```
 
 DNG 夹具是 `tests/gen_raw_fixture.py` 现场生成的 60 KB 真 DNG（16bit CFA、DNG 1.4 标签），libraw 能正常解出图像，因此 RAW 链路在 CI 里是真跑的，不是 mock。
