@@ -75,10 +75,10 @@ token 只显示一次，务必当场复制。
 ### 打版本标签
 
 ```bash
-git tag v1.1.9 && git push origin v1.1.9
+git tag v1.2.0 && git push origin v1.2.0
 ```
 
-`docker/metadata-action` 会把 `v1.1.9` 展开成 `1.1.9`、`1.1`、`latest` 三个 tag。
+`docker/metadata-action` 会把 `v1.2.0` 展开成 `1.2.0`、`1.2`、`latest` 三个 tag。
 版本号以 `server/config.py: APP_VERSION` 为准，打标签前先确认它和这次的改动一致——
 `/api/health` 返回的 `version` 就是从这个常量来的，三者对不上时排障会很痛苦。
 
@@ -119,13 +119,13 @@ curl -s -o /dev/null -w '%{http_code}\n' https://ghcr.io/v2/
 飞牛 Docker → **镜像** → 右上角 **拉取** → 填完整地址：
 
 ```
-ghcr.io/<你的用户名>/viaexif:1.1.9
+ghcr.io/<你的用户名>/viaexif:1.2.0
 ```
 
 国内直连 `ghcr.io` 慢的话，用加速前缀（飞牛「仓库设置」里加的源也是同一个原理）：
 
 ```
-ghcr.1ms.run/<你的用户名>/viaexif:1.1.9
+ghcr.1ms.run/<你的用户名>/viaexif:1.2.0
 ```
 
 拉完在「本地镜像」里就有了，点运行即可。这条路不依赖 Docker Hub，最稳。
@@ -141,7 +141,7 @@ ghcr.1ms.run/<你的用户名>/viaexif:1.1.9
 ```yaml
 services:
   viaexif:
-    image: ghcr.io/<你的用户名>/viaexif:1.1.9
+    image: ghcr.io/<你的用户名>/viaexif:1.2.0
     container_name: viaexif
     restart: unless-stopped
     ports:
@@ -179,8 +179,8 @@ sudo docker run -d --name registry -p 5000:5000 \
 把本机构建好的镜像塞进去（在能跑 docker 的机器上）：
 
 ```bash
-docker tag viaexif:1.1.9 <NAS-IP>:5000/viaexif:1.1.9
-docker push <NAS-IP>:5000/viaexif:1.1.9
+docker tag viaexif:1.2.0 <NAS-IP>:5000/viaexif:1.2.0
+docker push <NAS-IP>:5000/viaexif:1.2.0
 ```
 
 NAS 的 `/etc/docker/daemon.json` 里要有 `insecure-registries` 并包含 `<NAS-IP>:5000`
@@ -269,3 +269,17 @@ node tools/make-icons.mjs      # 写 web/assets/icons/icon-*.png
 做 fpk 时直接拿 `icon-256.png`，别从网页截图：它是 1:1 像素、无压缩损失。
 仓库里没有 `manifest` 或 `.fpk` 脚手架——真要做的时候再按飞牛当时的模板补，
 但图标、版本号（`server/config.py: APP_VERSION`）和镜像 tag 三者必须同号。
+
+## 七、字体
+
+`web/assets/fonts/*.woff2` 与 `web/css/fonts.css` 都是**生成物，已提交**——正常构建不需要 fonttools，
+也不需要 Maple Mono 的原始 TTF。它们只在换字体或改字符集时重出：
+
+```bash
+python tools/build-fonts.py <maple-mono 字体目录> --write
+python tools/build-fonts.py <maple-mono 字体目录> --check   # 只校验，CI 可用来挡漂移
+```
+
+每个字面约 40 KB（16 个共 0.62 MB），字符集见工具里的 `UNICODES`。
+字体许可为 SIL OFL 1.1，`LICENSE.txt` 与 woff2 放在同一目录随包分发——OFL 要求保留，
+删了就不是「忘了带」，而是违约。

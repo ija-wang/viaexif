@@ -21,7 +21,10 @@ import path from "node:path";
 const BASE = process.env.BASE_URL || "http://127.0.0.1:8099";
 const EDGE = process.env.EDGE || "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
 const OUT = "docs/assets";
-const VIEW = { width: 1440, height: 1330 };
+// Tall enough for the whole right-hand panel: template cards, six EXIF fields,
+// bar side, font picker, three sliders, export. A shorter viewport cuts the
+// export block off and makes the docs look like the feature does not exist.
+const VIEW = { width: 1440, height: 1520 };
 const DSF = 2;
 const FINAL_W = 1440;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -91,13 +94,10 @@ async function openPage(query = "") {
   await sleep(1400);
 }
 
-async function uploadDemoPhoto() {
+async function uploadDemoPhoto(file = path.resolve("tests/fixtures/sample.jpg")) {
   const doc = await send("DOM.getDocument", { depth: -1, pierce: true });
   const input = await send("DOM.querySelector", { nodeId: doc.root.nodeId, selector: "#fileInput" });
-  await send("DOM.setFileInputFiles", {
-    nodeId: input.nodeId,
-    files: [path.resolve("tests/fixtures/sample.jpg")],
-  });
+  await send("DOM.setFileInputFiles", { nodeId: input.nodeId, files: [file] });
   // The preview canvas replacing the dropzone is the signal that the pipeline
   // finished — a fixed sleep would either flake or pad every run.
   for (let i = 0; i < 60; i += 1) {
@@ -117,6 +117,30 @@ async function pickTemplate(id) {
   await sleep(700);
 }
 
+/** The portrait cut is generated with Pillow, so it carries no EXIF and every
+ *  text field would be empty — a side bar full of nothing documents nothing.
+ *  These are the same values `sample.jpg` has, typed in. */
+async function fillDemoFields() {
+  await evaluate(`(async () => {
+    const set = (k, v) => {
+      const n = document.getElementById('f-' + k);
+      n.value = v;
+      n.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    set('model', 'X-T4'); set('focal', '53mm'); set('aperture', 'f/3.2');
+    set('shutter', '1/5800s'); set('iso', 'ISO640'); set('shotAt', '2024-05-16 12:33');
+  })()`);
+  await sleep(250);
+  await evaluate(`document.getElementById('brandBtn').click()`);
+  await sleep(400);
+  await evaluate(`(() => {
+    const hit = [...document.querySelectorAll('#brandList .opt')]
+      .find((b) => b.textContent.trim().toUpperCase() === 'FUJIFILM');
+    if (hit) hit.click();
+  })()`);
+  await sleep(500);
+}
+
 try {
   await send("Page.enable");
   await send("Runtime.enable");
@@ -125,6 +149,19 @@ try {
     width: VIEW.width, height: VIEW.height, deviceScaleFactor: DSF, mobile: false,
   });
   await mkdir(OUT, { recursive: true });
+
+  // A portrait cut of the same synthetic frame, written to a temp path rather
+  // than committed: the point is to show that the bar moves to the side by
+  // itself, and nobody needs a second binary for that.
+  const portrait = path.resolve("tests/.tmp/doc-portrait.jpg");
+  await mkdir(path.dirname(portrait), { recursive: true });
+  await run("python", ["-c", `
+from PIL import Image
+import sys
+im = Image.open(sys.argv[1])
+w, h = im.size
+im.crop((int(w * 0.17), 0, int(w * 0.83), h)).resize((800, 1200), Image.LANCZOS).save(sys.argv[2], quality=92)
+`, path.resolve("tests/fixtures/sample.jpg"), portrait]);
 
   // 1) empty state, dark — the first thing a visitor sees
   await openPage("?theme=dark");
@@ -135,16 +172,26 @@ try {
   await pickTemplate("classic");
   await shoot("screenshot-classic.png");
 
-  // 3) blur template
+  // 3) a portrait frame: the bar takes the right edge on its own
+  await openPage("?theme=dark");
+  await uploadDemoPhoto(portrait);
+  await fillDemoFields();
+  await pickTemplate("classic");
+  await shoot("screenshot-portrait.png");
+
+  // 4) blur template
+  await openPage("?theme=dark");
+  await uploadDemoPhoto();
   await pickTemplate("blur");
   await shoot("screenshot-blur.png");
 
-  // 4) light theme, classic
+  // 5) light theme, classic
   await openPage("?theme=light");
   await uploadDemoPhoto();
   await pickTemplate("classic");
   await shoot("screenshot-light.png");
 
+  await unlink(portrait).catch(() => {});
   console.log("done");
 } finally {
   ws.close();

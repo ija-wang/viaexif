@@ -113,16 +113,20 @@ const BLUR_L = {
 };
 const ratio4 = (w, h) => Math.round((w / h) * 10000) / 10000;
 {
-  const g = blurLayout(1200, 800, BLUR_L);           // 3:2 landscape
+  const g = blurLayout(1200, 800, BLUR_L, 0, false); // 3:2 landscape, no date line
+  const d = blurLayout(1200, 800, BLUR_L, 0, true);  // ...and with the timestamp
   check("3:2 inset keeps source ratio", ratio4(g.photoW, g.photoH), 1.5);
   check("inset spans the padded width", Math.round(g.photoW), 1051);
   check("canvas grows instead of cropping", g.canvasH, 858);
+  check("canvas grows by one line for the timestamp", d.canvasH, 885);
+  check("the timestamp line sits below the params", d.line3Y > d.line2Y && d.line2Y > d.line1Y, true);
+  check("no timestamp, no reserved line", g.line3Y === g.line2Y, true);
   check("canvas keeps padTop above the photo", Math.round(g.padTop), 36);
 }
 {
   const g = blurLayout(1200, 1800, BLUR_L);          // 2:3 portrait
   check("2:3 inset keeps source ratio", ratio4(g.photoW, g.photoH), 0.6667);
-  check("portrait canvas follows the photo", g.canvasH, 1734);
+  check("portrait canvas follows the photo", g.canvasH, 1761);
 }
 {
   const g = blurLayout(1200, 1200, BLUR_L);          // square

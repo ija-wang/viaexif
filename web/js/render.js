@@ -11,8 +11,32 @@ const FONT_STACK =
 
 const MAX_EXPORT_WIDTH = 8192;
 
+/**
+ * The face the watermark is set in, for the duration of one render().
+ *
+ * `null` means the platform stack above, and every call site keeps its own
+ * weight. A bundled face is a *specific* weight and slant (the user picks
+ * "Thin · 极细", not "weight 500 in Thin"), so when one is selected it
+ * overrides the per-call weights — otherwise the browser would synthesise a
+ * bold out of a thin master and the picker would look broken.
+ *
+ * It is set from `opts.fontFace` at the top of render() and put back afterwards
+ * rather than being a setting on the module: two renderers given the same
+ * options then produce the same pixels no matter what ran before them.
+ */
+let face = null;
+
+function faceFrom(def) {
+  return def && def.family
+    ? { family: def.family, weight: def.weight || 400, style: def.style || "normal" }
+    : null;
+}
+
 function font(size, weight = 500, tracking = 0) {
-  return { size, weight, tracking, css: `${weight} ${Math.max(1, size).toFixed(2)}px ${FONT_STACK}` };
+  const w = face ? face.weight : weight;
+  const slant = face && face.style === "italic" ? "italic " : "";
+  const family = face ? `"${face.family}", ${FONT_STACK}` : FONT_STACK;
+  return { size, weight: w, tracking, css: `${slant}${w} ${Math.max(1, size).toFixed(2)}px ${family}` };
 }
 
 function setFont(ctx, f) {
@@ -177,7 +201,8 @@ function drawBrandMark(ctx, opts, x, y, h, align) {
 /**
  * @param {HTMLCanvasElement} canvas
  * @param {ImageBitmap|HTMLImageElement} image
- * @param {object} opts {template, spec, brand, fields, barRatio, brandRatio, quality(scale)}
+ * @param {object} opts {template, spec, brand, logoImg, fields, barRatio,
+ *   brandRatio, dividerW, radius, barPos, fontFace, quality(scale)}
  */
 export function render(canvas, image, opts) {
   const { template, spec, brand, fields } = opts;
@@ -194,46 +219,126 @@ export function render(canvas, image, opts) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  if (template === "classic") {
-    drawClassic(ctx, canvas, image, W, H, opts);
-  } else {
-    drawBlur(ctx, canvas, image, W, H, opts);
+  const outer = face;
+  face = faceFrom(opts.fontFace);
+  try {
+    if (template === "classic") {
+      drawClassic(ctx, canvas, image, W, H, opts);
+    } else {
+      drawBlur(ctx, canvas, image, W, H, opts);
+    }
+  } finally {
+    face = outer;
   }
   return { width: canvas.width, height: canvas.height };
 }
 
 /* ------------------------------------------------------------------ classic */
+const BAR_SIDES = new Set(["top", "bottom", "left", "right"]);
+
+/** Clamp a caller-supplied side to one the renderer knows. */
+export function normalizeBarPos(pos) {
+  return BAR_SIDES.has(pos) ? pos : "bottom";
+}
+
+/** Which side a photo starts on: landscape frames take the bar underneath,
+ *  portrait frames take it on the right where it costs width, not height. */
+export function autoBarPos(w, h, table) {
+  const t = table || { landscape: "bottom", portrait: "right" };
+  return w >= h ? t.landscape : t.portrait;
+}
+
+/**
+ * Geometry of the classic template, in canvas pixels.
+ *
+ * The bar is described in *bar space*: a strip of `length × barH` whose origin
+ * is the bar's start corner and whose +x runs along the bar, +y across it. A
+ * single layout routine draws the strip there, and a translate/rotate per side
+ * puts it on the canvas — so "model on the left, params on the right" becomes
+ * "model at the bottom, params at the top" on a side bar for free, with no
+ * second layout path to drift out of sync.
+ *
+ * Side bars rotate counter-clockwise, i.e. their text reads bottom-to-top: the
+ * caption starts at the photo's bottom edge on all four sides, which is what
+ * makes a left and a right bar look like mirror images of each other instead of
+ * one of them being upside down.
+ */
+export function barGeometry(W, H, barH, pos) {
+  const side = normalizeBarPos(pos);
+  const vertical = side === "left" || side === "right";
+  const canvasW = vertical ? W + barH : W;
+  const canvasH = vertical ? H : H + barH;
+  const photo = {
+    top: { x: 0, y: barH },
+    bottom: { x: 0, y: 0 },
+    left: { x: barH, y: 0 },
+    right: { x: 0, y: 0 },
+  }[side];
+  const origin = {
+    top: { x: 0, y: 0 },
+    bottom: { x: 0, y: H },
+    left: { x: 0, y: H },
+    right: { x: W, y: H },
+  }[side];
+  return {
+    side,
+    vertical,
+    canvasW,
+    canvasH,
+    photo: { x: photo.x, y: photo.y, w: W, h: H },
+    origin,
+    length: vertical ? H : W,
+  };
+}
+
 function drawClassic(ctx, canvas, image, W, H, opts) {
-  const { spec, brand, fields } = opts;
+  const { spec } = opts;
   const L = spec.layout;
   const C = spec.colors;
   const barH = Math.max(12, Math.round(W * opts.barRatio));
-  const totalH = H + barH;
+  const g = barGeometry(W, H, barH, opts.barPos);
 
-  canvas.width = W;
-  canvas.height = totalH;
+  canvas.width = g.canvasW;
+  canvas.height = g.canvasH;
 
+  // Bar colour first, as a full-canvas fill: the bar is one rectangle and the
+  // photo covers the rest, so a side bar needs no separate rect bookkeeping.
   ctx.fillStyle = C.bar;
-  ctx.fillRect(0, 0, W, totalH);
+  ctx.fillRect(0, 0, g.canvasW, g.canvasH);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(image, 0, 0, W, H);
+  ctx.drawImage(image, g.photo.x, g.photo.y, g.photo.w, g.photo.h);
 
-  const barTop = H;
-  const cy = barTop + barH / 2;
-  const padX = W * L.barPadX;
+  // A side bar is as thick as the bottom bar is tall, and its inset follows the
+  // thickness instead of the length — a 4000px-tall frame would otherwise push
+  // the caption hundreds of pixels into the strip.
+  const padX = g.vertical ? barH * (L.sidePadRatio ?? 0.28) : g.length * L.barPadX;
+
+  ctx.save();
+  ctx.translate(g.origin.x, g.origin.y);
+  if (g.vertical) ctx.rotate(-Math.PI / 2);
+  drawBar(ctx, opts, g.length, barH, padX, W);
+  ctx.restore();
+}
+
+/** Draw the caption inside bar space: (0,0) is the strip's start corner. */
+function drawBar(ctx, opts, Lb, barH, padX, refW) {
+  const { spec, brand, fields } = opts;
+  const L = spec.layout;
+  const C = spec.colors;
   const params = fields.params;
+  const cy = barH / 2;
   const gap = barH * L.gap;
-  // The rule between the brand mark and the params: a slider ratio of W, 2px at
-  // the 1200px reference width. It is deliberately not a hairline — at 1px the
-  // stroke lands half-on-half-off a pixel column, greys itself out, and reads as
-  // a smudge stuck to the mark instead of a separator.
-  const divW = opts.dividerW != null ? W * opts.dividerW : W * (L.dividerW || 2 / 1200);
+  // The rule between the brand mark and the params: a slider ratio of the
+  // *photo* width, 2px at the 1200px reference width. It is deliberately not a
+  // hairline — at 1px the stroke lands half-on-half-off a pixel column, greys
+  // itself out, and reads as a smudge stuck to the mark instead of a separator.
+  const divW = opts.dividerW != null ? opts.dividerW * refW : refW * (L.dividerW || 2 / 1200);
 
-  // ---- 1) size the right block first, capped at 58% of the canvas width
+  // ---- 1) size the right block first, capped at 58% of the strip length
   let paramF = font(barH * L.paramFont, 500);
   let markH = barH * L.brandFont * (opts.brandRatio / 0.3);
-  const rightCap = W * 0.58;
+  const rightCap = Lb * 0.58;
   let rightW = 0;
   for (let i = 0; i < 16; i += 1) {
     const markW = brand ? brandMarkWidth(ctx, brand, markH) : 0;
@@ -246,7 +351,7 @@ function drawClassic(ctx, canvas, image, W, H, opts) {
 
   // ---- 2) give the left block whatever is left, minus a safety gutter
   const gutter = barH * 0.45;
-  const leftAvail = Math.max(W * 0.18, W * (1 - 2 * L.barPadX) - rightW - gutter);
+  const leftAvail = Math.max(Lb * 0.18, Lb - 2 * padX - rightW - gutter);
   const modelF = fitFont(ctx, fields.model, font(barH * L.modelFont, 600), leftAvail);
   const dateF = fitFont(ctx, fields.shotAt, font(barH * L.dateFont, 500), leftAvail);
 
@@ -254,14 +359,14 @@ function drawClassic(ctx, canvas, image, W, H, opts) {
   ctx.textBaseline = "alphabetic";
   ctx.fillStyle = C.text;
   setFont(ctx, modelF);
-  if (fields.model) ctx.fillText(fields.model, padX, barTop + barH * L.modelBaseline);
+  if (fields.model) ctx.fillText(fields.model, padX, barH * L.modelBaseline);
   ctx.fillStyle = C.sub;
   setFont(ctx, dateF);
-  if (fields.shotAt) ctx.fillText(fields.shotAt, padX, barTop + barH * L.dateBaseline);
+  if (fields.shotAt) ctx.fillText(fields.shotAt, padX, barH * L.dateBaseline);
 
   // ---- 3) draw the right block: [brand logo] [divider] [params]
   {
-    const rightX = W * (1 - L.barPadX);
+    const rightX = Lb - padX;
     const pw = measure(ctx, params, paramF);
     const paramLeft = rightX - pw;
 
@@ -298,16 +403,24 @@ function drawClassic(ctx, canvas, image, W, H, opts) {
  * `radiusRatio` is the optional corner-radius slider (ratio of `W`). It
  * defaults to 0: a rounded corner clips real pixels out of the frame corners,
  * so it is opt-in rather than baked into the layout.
+ *
+ * The text block is 2 or 3 lines — [logo] model / params / timestamp. The
+ * timestamp is optional because a photo without EXIF date has nothing to show
+ * there, and reserving an empty line would leave the caption floating away from
+ * the frame. `line3Y` is only meaningful when `hasDate`.
  */
-export function blurLayout(W, H, L, radiusRatio) {
+export function blurLayout(W, H, L, radiusRatio, hasDate = true) {
   const padX = W * L.padX;
   const padTop = W * L.padTop;
   const textSize = W * L.textFont;
-  const bottomStrip = W * L.line2Baseline + textSize * (1 + L.lineGap + L.photoGapAboveText);
+  const lines = hasDate ? 3 : 2;
+  const bottomStrip = W * L.line2Baseline + textSize * (1 + L.lineGap * (lines - 1) + L.photoGapAboveText);
   const photoW = W - padX * 2;
   const photoH = Math.max(1, photoW * (H / W));
   const canvasH = Math.round(padTop + photoH + bottomStrip);
   const rr = radiusRatio ?? L.radius ?? 0;
+  const line3Y = canvasH - W * L.line2Baseline;
+  const line2Y = line3Y - (hasDate ? textSize * L.lineGap : 0);
   return {
     padX,
     padTop,
@@ -316,8 +429,9 @@ export function blurLayout(W, H, L, radiusRatio) {
     canvasH,
     radius: Math.max(0, W * rr),
     textSize,
-    line2Y: canvasH - W * L.line2Baseline,
-    line1Y: canvasH - W * L.line2Baseline - textSize * L.lineGap,
+    line3Y,
+    line2Y,
+    line1Y: line2Y - textSize * L.lineGap,
   };
 }
 
@@ -325,7 +439,8 @@ function drawBlur(ctx, canvas, image, W, H, opts) {
   const { spec, brand, fields } = opts;
   const L = spec.layout;
   const C = spec.colors;
-  const g = blurLayout(W, H, L, opts.radius);
+  const hasDate = Boolean((fields.shotAt || "").trim());
+  const g = blurLayout(W, H, L, opts.radius, hasDate);
 
   canvas.width = W;
   canvas.height = g.canvasH;
@@ -357,7 +472,7 @@ function drawBlur(ctx, canvas, image, W, H, opts) {
 
   // ---- text line 1: [Brand logo] [Model], centred
   const textF = font(g.textSize, 500);
-  const { line1Y, line2Y } = g;
+  const { line1Y, line2Y, line3Y } = g;
   let markH = textF.size * L.brandFont * (opts.brandRatio / 0.3);
   let modelF = font(textF.size, 500, 0.2);
   let paramF = font(textF.size, 500, 0.2);
@@ -400,6 +515,18 @@ function drawBlur(ctx, canvas, image, W, H, opts) {
     setFont(ctx, paramF);
     ctx.fillText(fields.params, W / 2, line2Y);
   }
+
+  // ---- text line 3: the timestamp, centred under the exposure line and set at
+  // the same size as it — a watermark reads as one block of type, so the date
+  // is distinguished by its dimmer colour, not by a different point size.
+  if (fields.shotAt) {
+    const dateF = fitFont(ctx, fields.shotAt, font(textF.size, 500, textF.tracking), maxLine);
+    ctx.textAlign = "center";
+    ctx.fillStyle = C.sub;
+    setFont(ctx, dateF);
+    ctx.fillText(fields.shotAt, W / 2, line3Y);
+  }
+
   ctx.shadowColor = "transparent";
   ctx.shadowBlur = 0;
   ctx.shadowOffsetY = 0;

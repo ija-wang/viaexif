@@ -8,6 +8,8 @@ Dockerfile text eol=lf
 *.png   binary
 *.jpg   binary
 *.webp  binary
+*.woff2 binary
+*.ttf   binary
 *.heic  binary
 *.HEIC  binary
 *.dng   binary

@@ -61,6 +61,7 @@ ALIASES = {
     "lenovo": ("lenovo", "Lenovo"),
     "rog": ("rog", "ROG"),
     "casio": ("casio", "Casio"),
+    "zeiss": ("zeiss", "ZEISS"),
 }
 
 DROP_ATTRS = ("t", "class", "p-id", "width", "height")

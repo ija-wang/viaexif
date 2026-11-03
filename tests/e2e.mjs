@@ -111,6 +111,7 @@ try {
     const skewed = [];
     const notUniform = [];
     const bleed = [];
+    const inkHeights = [];
     for (const b of cfg.brands) {
       const res = await fetch('/assets/brands/' + b.logo);
       const vb = (await res.text()).match(/viewBox="([^"]+)"/)[1].trim().split(/[\\s,]+/).map(Number);
@@ -130,6 +131,17 @@ try {
       let ink = 0;
       for (let i = 3; i < d.length; i += 4) if (d[i] > 200) ink += 1;
       if (ink / (W * H) > 0.98) slabs.push(b.key);
+      // Ink height, not canvas height: the viewBox being 200 units tall says
+      // nothing about how much of it the artwork fills, and it is the artwork
+      // that has to look the same size from one brand to the next.
+      let top = H;
+      let bottom = -1;
+      for (let y = 0; y < H; y += 1) {
+        for (let x = 0; x < W; x += 1) {
+          if (d[(y * W + x) * 4 + 3] > 200) { if (y < top) top = y; if (y > bottom) bottom = y; break; }
+        }
+      }
+      if (bottom > top) inkHeights.push({ key: b.key, h: bottom - top + 1 });
       // ...and the 2% pad has to survive rasterisation: ink on the outer 1px
       // ring means the mark gets shaved at every export size.
       const alphaAt = (x, y) => d[(y * W + x) * 4 + 3];
@@ -138,7 +150,8 @@ try {
       for (let y = 0; y < H; y += 1) edge = Math.max(edge, alphaAt(0, y), alphaAt(W - 1, y));
       if (edge > 60) bleed.push(b.key);
     }
-    return { slabs, skewed, notUniform, bleed };
+    return { slabs, skewed, notUniform, bleed, inkHeights, total: cfg.brands.length,
+             zeiss: cfg.brands.some((b) => b.key === "zeiss") };
   })()`);
   // A few marks *are* solid tiles by design (the Nikon and realme yellow
   // plates are the logo, not a leftover backdrop), so those are expected.
@@ -149,6 +162,18 @@ try {
   check("every brand aspect matches its viewBox", brandAudit.skewed.length === 0, brandAudit.skewed.join("; "));
   check("every brand canvas is the same height", brandAudit.notUniform.length === 0, brandAudit.notUniform.join("; "));
   check("no brand ink touches the canvas edge", brandAudit.bleed.length === 0, brandAudit.bleed.join(","));
+  // "All logos are the same height" is about what the eye measures, which is the
+  // ink, not the box: a 200-unit viewBox with a 4% pad that only some files got
+  // would still look wrong. Measured at H=140 they must land within 2px of each
+  // other — that is one anti-aliased row, i.e. no drift at all.
+  const inkMin = Math.min(...brandAudit.inkHeights.map((r) => r.h));
+  const inkMax = Math.max(...brandAudit.inkHeights.map((r) => r.h));
+  check("every brand was measured", brandAudit.inkHeights.length === brandAudit.total,
+    `${brandAudit.inkHeights.length}/${brandAudit.total}`);
+  check("every brand mark has the same visual height", inkMax - inkMin <= 2,
+    `${inkMin}..${inkMax}px (${brandAudit.inkHeights.filter((r) => r.h < inkMax - 2 || r.h > inkMin + 2)
+      .map((r) => r.key + "=" + r.h).join(",")})`);
+  check("zeiss mark is in the brand list", brandAudit.zeiss === true);
 
   console.log("render reuse");
   // Tinted marks go through one shared scratch canvas. It used to only *grow*
@@ -235,6 +260,29 @@ try {
     return c.height > Math.round(c.width * 800 / 1200);
   })()`));
 
+  console.log("blur timestamp");
+  // The blur template used to draw only [brand] model / params; the date existed
+  // in the fields and appeared in the classic bar but nowhere here. It is the
+  // third line now, and an empty date must not reserve a blank line.
+  const blurDate = await evaluate(`(async () => {
+    window.__cfg = window.__cfg || await (await fetch('/api/config')).json();
+    const L = window.__cfg.spec.blur.layout;
+    const c = document.getElementById('preview');
+    const f = document.getElementById('f-shotAt');
+    const settle = () => new Promise((r) => setTimeout(r, 340));
+    const withDate = c.height;
+    const keep = f.value;
+    f.value = ''; f.dispatchEvent(new Event('input', { bubbles: true })); await settle();
+    const withoutDate = c.height;
+    f.value = keep; f.dispatchEvent(new Event('input', { bubbles: true })); await settle();
+    return { withDate, withoutDate, back: c.height, line: c.width * L.textFont * L.lineGap };
+  })()`);
+  check("blur reserves a line for the timestamp", blurDate.withDate > blurDate.withoutDate,
+    JSON.stringify(blurDate));
+  check("that line is exactly one line-height", Math.abs((blurDate.withDate - blurDate.withoutDate) - blurDate.line) <= 1.5,
+    `${blurDate.withDate - blurDate.withoutDate}px vs ${blurDate.line.toFixed(1)}px`);
+  check("clearing the date restores the height", blurDate.back === blurDate.withDate);
+
   console.log("corner radius");
   check("radius slider defaults to 0px", (await evaluate(`document.getElementById('v-radius').textContent`)) === "0px");
   // px at the photo's top-left inset corner: sharp photo when r=0, blurred
@@ -316,6 +364,103 @@ try {
   check("divider slider defaults to 2px", divider.label === "2px", divider.label);
   check("divider is drawn at the default", divider.defaultOn, String(divider.defaultOn));
   check("divider slider changes the rule", divider.thickDiffers, String(divider.thickDiffers));
+
+  console.log("bar side");
+  // One layout routine, four edges. A side bar is a strip along the photo's
+  // long edge, so it adds *width*; top/bottom add height.
+  const sides = await evaluate(`(async () => {
+    const c = document.getElementById('preview');
+    const ratio = Number(document.getElementById('s-barRatio').value);
+    const barH = Math.round(1200 * ratio);   // the fixture renders 1200 wide
+    const pick = (pos) => [...document.querySelectorAll('#barPosSeg button')].find(b => b.dataset.pos === pos).click();
+    const settle = () => new Promise(r => setTimeout(r, 340));
+    const corner = (x, y) => { const d = c.getContext('2d').getImageData(x, y, 1, 1).data; return [d[0], d[1], d[2]]; };
+    const out = {};
+    for (const p of ['bottom', 'top', 'left', 'right']) {
+      pick(p); await settle();
+      out[p] = {
+        w: c.width, h: c.height,
+        pressed: [...document.querySelectorAll('#barPosSeg button')]
+          .filter(b => b.getAttribute('aria-pressed') === 'true').map(b => b.dataset.pos).join(','),
+        // the bar side is the one whose leading corner is paper-white
+        white: {
+          top: corner(4, 4), bottom: corner(4, c.height - 4),
+          left: corner(4, 4), right: corner(c.width - 4, 4),
+        },
+      };
+    }
+    pick('bottom'); await settle();
+    return { barH, ...out, back: { w: c.width, h: c.height } };
+  })()`);
+  const isWhite = (px) => px[0] > 245 && px[1] > 245 && px[2] > 245;
+  check("bottom bar adds only height", sides.bottom.w === 1200 && sides.bottom.h === 800 + sides.barH,
+    `${sides.bottom.w}x${sides.bottom.h} barH=${sides.barH}`);
+  check("top bar adds only height", sides.top.w === 1200 && sides.top.h === 800 + sides.barH,
+    `${sides.top.w}x${sides.top.h}`);
+  check("side bars add only width", sides.left.w === 1200 + sides.barH && sides.left.h === 800
+    && sides.right.w === 1200 + sides.barH && sides.right.h === 800,
+    `${sides.left.w}x${sides.left.h} / ${sides.right.w}x${sides.right.h}`);
+  check("bottom bar sits on the bottom edge", isWhite(sides.bottom.white.bottom) && !isWhite(sides.bottom.white.top), JSON.stringify(sides.bottom.white));
+  check("top bar sits on the top edge", isWhite(sides.top.white.top) && !isWhite(sides.top.white.bottom), JSON.stringify(sides.top.white));
+  check("left bar sits on the left edge", isWhite(sides.left.white.left) && !isWhite(sides.right.white.left), JSON.stringify(sides.left.white));
+  check("right bar sits on the right edge", isWhite(sides.right.white.right) && !isWhite(sides.left.white.right), JSON.stringify(sides.right.white));
+  check("picking a side repaints the control", sides.right.pressed === "right" && sides.top.pressed === "top",
+    `${sides.right.pressed} / ${sides.top.pressed}`);
+  check("switching back restores the bottom bar", sides.back.h === sides.bottom.h && sides.back.w === sides.bottom.w,
+    JSON.stringify(sides.back));
+
+  // A side bar goes through the full-resolution export path too — the preview is
+  // 1200px wide, an export can be 8000, and the strip maths has to hold there.
+  const sideExport = await evaluate(`(async () => {
+    [...document.querySelectorAll('#barPosSeg button')].find(b => b.dataset.pos === 'right').click();
+    await new Promise((r) => setTimeout(r, 340));
+    const errs = [];
+    window.addEventListener('error', (e) => errs.push(e.message));
+    document.getElementById('btnDownload').click();
+    for (let i = 0; i < 60; i += 1) {
+      if (/已导出/.test(document.getElementById('toast').textContent)) break;
+      if (document.querySelector('.toast.err')) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    const bad = document.querySelector('.toast.err') ? document.getElementById('toast').textContent : '';
+    [...document.querySelectorAll('#barPosSeg button')].find(b => b.dataset.pos === 'bottom').click();
+    await new Promise((r) => setTimeout(r, 340));
+    return { toast: document.getElementById('toast').textContent, bad, errs: errs.join('|') };
+  })()`);
+  check("side bar exports at full resolution", !sideExport.bad && !sideExport.errs && /已导出/.test(sideExport.toast),
+    JSON.stringify(sideExport));
+
+  console.log("font");
+  const fonts = await evaluate(`(async () => {
+    const cfg = window.__cfg || await (await fetch('/api/config')).json();
+    const bad = [];
+    for (const f of cfg.fonts) {
+      if (!f.file) continue;
+      const res = await fetch('/assets/fonts/' + f.file, { method: 'HEAD' });
+      if (!res.ok) bad.push(f.key);
+    }
+    const sel = document.getElementById('fontSelect');
+    const c = document.getElementById('preview');
+    const settle = () => new Promise((r) => setTimeout(r, 480));
+    const use = async (k) => { sel.value = k; sel.dispatchEvent(new Event('change')); await settle(); return c.toDataURL(); };
+    const regular = await use(cfg.defaultFont);
+    const bold = await use('maple-mono-nf-cn-bold');
+    const thin = await use('maple-mono-nf-cn-thin');
+    const back = await use(cfg.defaultFont);
+    return {
+      count: cfg.fonts.length, missing: bad, def: cfg.defaultFont,
+      chosen: sel.value,
+      boldDiffers: bold !== regular, thinDiffers: thin !== regular, restores: back === regular,
+      loaded: [...document.fonts].filter((f) => f.status === 'loaded').length,
+    };
+  })()`);
+  check("every bundled face is served", fonts.missing.length === 0, fonts.missing.join(","));
+  check("font picker lists all faces", fonts.count >= 16, String(fonts.count));
+  check("default face is Maple Mono Regular", fonts.def === "maple-mono-nf-cn-regular", fonts.def);
+  check("picking a heavier face changes the pixels", fonts.boldDiffers === true);
+  check("picking a lighter face changes the pixels", fonts.thinDiffers === true);
+  check("picking the default again restores it", fonts.restores === true);
+  console.log("  faces loaded:", fonts.loaded);
 
   const metrics = await evaluate(`({
     dpr: window.devicePixelRatio,
@@ -464,6 +609,45 @@ try {
   })()`);
   check("heic export completes", heicExport === true, String(heicExport));
   check("share disabled for heic", (await evaluate(`document.getElementById('btnShare').disabled`)) === true);
+
+  console.log("portrait default side");
+  // A portrait frame has its short edges on top and bottom, so a bar there eats
+  // height that the photo cannot spare; it belongs on the right. Landscape is
+  // the mirror case. The rule is exercised through the real upload path, so a
+  // regression in addFiles() (not just in autoBarPos) shows up here.
+  await evaluate(`(async () => {
+    const src = document.createElement('canvas');
+    src.width = 600; src.height = 900;
+    const g = src.getContext('2d');
+    g.fillStyle = '#2b3a4a'; g.fillRect(0, 0, 600, 900);
+    g.fillStyle = '#c8a06a'; g.beginPath(); g.arc(400, 300, 150, 0, Math.PI * 2); g.fill();
+    const blob = await new Promise((r) => src.toBlob(r, 'image/jpeg', 0.9));
+    const dt = new DataTransfer();
+    dt.items.add(new File([blob], 'portrait.jpg', { type: 'image/jpeg' }));
+    const input = document.getElementById('fileInput');
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  })()`);
+  const portrait = await evaluate(`(async () => {
+    for (let i = 0; i < 60; i += 1) {
+      if (document.getElementById('fileMeta').textContent.includes('portrait.jpg')) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    const c = document.getElementById('preview');
+    const pressed = [...document.querySelectorAll('#barPosSeg button')]
+      .filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.dataset.pos).join(',');
+    const barH = Math.round(600 * Number(document.getElementById('s-barRatio').value));
+    return { pressed, w: c.width, h: c.height, barH, meta: document.getElementById('fileMeta').textContent };
+  })()`);
+  check("portrait photo defaults to the right bar", portrait.pressed === "right", `${portrait.pressed} ${portrait.meta}`);
+  check("right bar widens the canvas, not the height", portrait.w === 600 + portrait.barH && portrait.h === 900,
+    `${portrait.w}x${portrait.h} (expected ${600 + portrait.barH}x900 = 600x900 + a ${portrait.barH}px strip)`);
+  check("landscape still defaults to the bottom", await evaluate(`(async () => {
+    const { autoBarPos } = await import('/js/render.js');
+    const cfg = window.__cfg || await (await fetch('/api/config')).json();
+    const t = cfg.spec.classic.autoBarPos;
+    return autoBarPos(1200, 800, t) === 'bottom' && autoBarPos(800, 1200, t) === 'right' && autoBarPos(1000, 1000, t) === 'bottom';
+  })()`));
 
   check("no uncaught page exceptions", pageErrors.length === 0, pageErrors.slice(0, 3).join(" | "));
 

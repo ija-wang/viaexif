@@ -4,11 +4,12 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>viaEXIF · 自托管相机水印工具</title>
-<meta name="description" content="viaEXIF —— 自托管的 EXIF 相机水印生成器：HEIC 实况照片与 26 种 RAW，经典白条与模糊边框两种模板，支持批量导出与分享链接。" />
+<meta name="description" content="viaEXIF —— 自托管的 EXIF 相机水印生成器：HEIC 实况照片与 26 种 RAW，经典白条与模糊边框两种模板，白条可放四边、字体可换，支持批量导出与分享链接。" />
 <link rel="icon" type="image/svg+xml" href="/assets/viaexif.svg" />
 <link rel="icon" type="image/png" sizes="32x32" href="/assets/icons/icon-32.png" />
 <link rel="apple-touch-icon" sizes="180x180" href="/assets/icons/icon-180.png" />
 <link rel="stylesheet" href="./css/style.css" />
+<link rel="stylesheet" href="./css/fonts.css" />
 <script>
   /* Resolve the theme before first paint, otherwise light-theme users see a dark flash. */
   (function () {
@@ -123,6 +124,17 @@
 
     <section class="card">
       <h3>水印设置</h3>
+      <div class="field" id="barPosField" hidden>
+        <label>白条位置</label>
+        <div class="seg seg-sides" id="barPosSeg" role="group" aria-label="白条位置"></div>
+      </div>
+      <div class="field" id="fontField">
+        <label for="fontSelect">字体</label>
+        <div class="pick">
+          <select id="fontSelect" class="pick-input"></select>
+          <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 8l5 5 5-5"/></svg>
+        </div>
+      </div>
       <div id="sliderBox"></div>
     </section>
 

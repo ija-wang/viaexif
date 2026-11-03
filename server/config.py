@@ -13,7 +13,7 @@ from .imaging import capabilities
 BASE_DIR = Path(__file__).resolve().parent.parent
 WEB_DIR = BASE_DIR / "web"
 
-APP_VERSION = "1.1.9"
+APP_VERSION = "1.2.0"
 
 
 def _int_env(name: str, default: int) -> int:
@@ -50,12 +50,56 @@ TEMPLATES = [
     {"id": "blur", "name": "模糊", "desc": "艺术感模糊背景效果"},
 ]
 
+# ------------------------------------------------------------- bar position
+# Which edge of the photo the classic template's bar sits on. The default is
+# not a constant: a landscape frame reads left-to-right, so the bar belongs
+# underneath it; a portrait frame has the short edge on top and bottom, so the
+# bar goes on the right where it does not steal height. `autoBarPos` resolves
+# that per image; the user can override it per image from the panel.
+BAR_POSITIONS = [
+    {"id": "top", "label": "上"},
+    {"id": "bottom", "label": "下"},
+    {"id": "left", "label": "左"},
+    {"id": "right", "label": "右"},
+]
+AUTO_BAR_POS = {"landscape": "bottom", "portrait": "right"}
+
+# ------------------------------------------------------------------- fonts
+# Bundled watermark faces, built by tools/build-fonts.py from a Maple Mono
+# release. Each is subset to the repertoire a watermark can contain and packed
+# as WOFF2 (~40 KB per face), so offering all sixteen weights costs 0.6 MB
+# rather than the 326 MB the raw TTFs weigh. `system` keeps the pre-1.2 look:
+# whatever the platform ships, which is the right answer for nobody in
+# particular but is the safe fallback when a glyph is missing from the subset.
+FONTS = [
+    {"key": "maple-mono-nf-cn-thin", "label": "极细 · Thin", "family": "Maple Mono NF CN", "weight": 100, "style": "normal", "file": "maple-mono-nf-cn-thin.woff2"},
+    {"key": "maple-mono-nf-cn-thinitalic", "label": "极细 斜体 · Thin Italic", "family": "Maple Mono NF CN", "weight": 100, "style": "italic", "file": "maple-mono-nf-cn-thinitalic.woff2"},
+    {"key": "maple-mono-nf-cn-extralight", "label": "超细 · ExtraLight", "family": "Maple Mono NF CN", "weight": 200, "style": "normal", "file": "maple-mono-nf-cn-extralight.woff2"},
+    {"key": "maple-mono-nf-cn-extralightitalic", "label": "超细 斜体 · ExtraLight Italic", "family": "Maple Mono NF CN", "weight": 200, "style": "italic", "file": "maple-mono-nf-cn-extralightitalic.woff2"},
+    {"key": "maple-mono-nf-cn-light", "label": "细体 · Light", "family": "Maple Mono NF CN", "weight": 300, "style": "normal", "file": "maple-mono-nf-cn-light.woff2"},
+    {"key": "maple-mono-nf-cn-lightitalic", "label": "细体 斜体 · Light Italic", "family": "Maple Mono NF CN", "weight": 300, "style": "italic", "file": "maple-mono-nf-cn-lightitalic.woff2"},
+    {"key": "maple-mono-nf-cn-regular", "label": "常规 · Regular", "family": "Maple Mono NF CN", "weight": 400, "style": "normal", "file": "maple-mono-nf-cn-regular.woff2"},
+    {"key": "maple-mono-nf-cn-italic", "label": "常规 斜体 · Italic", "family": "Maple Mono NF CN", "weight": 400, "style": "italic", "file": "maple-mono-nf-cn-italic.woff2"},
+    {"key": "maple-mono-nf-cn-medium", "label": "中等 · Medium", "family": "Maple Mono NF CN", "weight": 500, "style": "normal", "file": "maple-mono-nf-cn-medium.woff2"},
+    {"key": "maple-mono-nf-cn-mediumitalic", "label": "中等 斜体 · Medium Italic", "family": "Maple Mono NF CN", "weight": 500, "style": "italic", "file": "maple-mono-nf-cn-mediumitalic.woff2"},
+    {"key": "maple-mono-nf-cn-semibold", "label": "半粗 · SemiBold", "family": "Maple Mono NF CN", "weight": 600, "style": "normal", "file": "maple-mono-nf-cn-semibold.woff2"},
+    {"key": "maple-mono-nf-cn-semibolditalic", "label": "半粗 斜体 · SemiBold Italic", "family": "Maple Mono NF CN", "weight": 600, "style": "italic", "file": "maple-mono-nf-cn-semibolditalic.woff2"},
+    {"key": "maple-mono-nf-cn-bold", "label": "粗体 · Bold", "family": "Maple Mono NF CN", "weight": 700, "style": "normal", "file": "maple-mono-nf-cn-bold.woff2"},
+    {"key": "maple-mono-nf-cn-bolditalic", "label": "粗体 斜体 · Bold Italic", "family": "Maple Mono NF CN", "weight": 700, "style": "italic", "file": "maple-mono-nf-cn-bolditalic.woff2"},
+    {"key": "maple-mono-nf-cn-extrabold", "label": "特粗 · ExtraBold", "family": "Maple Mono NF CN", "weight": 800, "style": "normal", "file": "maple-mono-nf-cn-extrabold.woff2"},
+    {"key": "maple-mono-nf-cn-extrabolditalic", "label": "特粗 斜体 · ExtraBold Italic", "family": "Maple Mono NF CN", "weight": 800, "style": "italic", "file": "maple-mono-nf-cn-extrabolditalic.woff2"},
+    {"key": "system", "label": "系统字体 · System", "family": None, "weight": 400, "style": "normal", "file": None},
+]
+DEFAULT_FONT = "maple-mono-nf-cn-regular"
+
 # ---------------------------------------------------------------- layout spec
 # All values are ratios, resolved against the *oriented* image width `W`
 # (and `H` for vertical anchors). `barRatio` / `brandRatio` are user sliders.
 SPEC = {
     "classic": {
-        "expandBottom": True,
+        # The bar can sit on any of the four edges (see BAR_POSITIONS); these
+        # defaults only decide which edge a *new* photo starts on.
+        "autoBarPos": AUTO_BAR_POS,
         "sliders": {
             "barRatio": {"label": "白条高度", "hint": "白条高度占图片宽度的比例，默认 8%",
                          "min": 0.05, "max": 0.15, "step": 0.01, "default": 0.08},
@@ -80,6 +124,11 @@ SPEC = {
             "gap": 0.130,            # × barH
             "dividerW": 0.001667,    # × W, fallback when the slider is absent (= 2px@1200)
             "dividerH": 0.460,       # × barH
+            # A side bar is as thick as the bottom bar is tall, and its content
+            # runs along the photo's long edge. The inset stops tracking the bar
+            # *length* there (that would push the text into the middle of a
+            # 4000px-tall frame) and tracks the thickness instead.
+            "sidePadRatio": 0.28,    # × barH, cap for the inset on a side bar
         },
         "colors": {
             "bar": "#FFFFFF",
@@ -89,7 +138,6 @@ SPEC = {
         },
     },
     "blur": {
-        "expandBottom": False,
         # No bar in this template, and the bottom margin is fixed by the text
         # strip, so only the logo size and the (opt-in) corner radius are
         # adjustable. The old "barRatio" entry was a dead control: it rendered
@@ -186,6 +234,10 @@ BRANDS = [
     {"key": "lenovo", "name": "Lenovo", "color": "#E60012", "logo": "lenovo.svg", "aspect": 4.5373, "tint": False},
     {"key": "rog", "name": "ROG", "color": "#E50007", "logo": "rog.svg", "aspect": 1.648, "tint": False},
     {"key": "casio", "name": "Casio", "color": "#003296", "logo": "casio.svg", "aspect": 4.9415, "tint": False},
+    # ZEISS ships its blue mark plus the "Seeing beyond" tagline in the sheet;
+    # normalize-logos.mjs drops the tagline (3px tall at watermark size), which
+    # is what makes this a square: the tile alone is 1:1.
+    {"key": "zeiss", "name": "ZEISS", "color": "#141E8C", "logo": "zeiss.svg", "aspect": 1.0, "tint": False},
 ]
 
 # Make / Model substring -> brand key. Ordered: first hit wins.
@@ -201,6 +253,7 @@ BRAND_HINTS = [
     ("zte", "zte"), ("google", "google"),
     ("nokia", "nokia"), ("lenovo", "lenovo"),
     ("casio", "casio"), ("rog", "rog"), ("asus", "rog"),
+    ("zeiss", "zeiss"), ("蔡司", "zeiss"),
     # model-only hints (camera lines)
     ("eos", "canon"), ("ilce", "sony"), ("ilca", "sony"), ("dsc-", "sony"), ("x-t", "fujifilm"),
     ("x-h", "fujifilm"), ("x100", "fujifilm"), ("x-pro", "fujifilm"), ("gf x", "fujifilm"),
@@ -266,6 +319,9 @@ def public_config() -> dict:
         "fields": FIELDS,
         "brands": BRANDS,
         "brandHints": BRAND_HINTS,
+        "fonts": FONTS,
+        "defaultFont": DEFAULT_FONT,
+        "barPositions": BAR_POSITIONS,
         "formats": EXPORT_FORMATS,
         "inputs": INPUT_FORMATS,
         "decode": capabilities(),

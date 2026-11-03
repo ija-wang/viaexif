@@ -54,6 +54,14 @@ const CHECK_ONLY = process.argv.includes("--check");
  * the mark, pure rectangles, nothing to do with the logo. They are removed by
  * rule (not by hand) so re-importing the sheet reproduces the same file. */
 const EXTRA_RECTS = new Set(["gopro.svg"]);
+
+/* Marks that ship a line of campaign copy under the artwork (ZEISS's
+ * "Seeing beyond"). It is dropped by rule — an *unpainted* path (no fill of
+ * its own, so the black default) sitting entirely below the mark's largest
+ * coloured shape. At watermark size the mark is ~30px tall, which puts that
+ * line at 3px: too small to read, big enough to look like a smudge. Painted
+ * paths are never touched, so the white lettering inside the blue tile stays. */
+const DROP_SUB_TEXT = new Set(["zeiss.svg"]);
 const REPORT = CHECK_ONLY || process.argv.includes("--report");
 
 /* The canvas every mark is fitted into. 200 units tall, ink 184 of them. */
@@ -115,6 +123,7 @@ const PAGE_JS = String.raw`
   const host = document.getElementById("__host");
   const PAD = ${PAD}, H = ${H};
   const EXTRAS = new Set(${JSON.stringify([...EXTRA_RECTS])});
+  const SUBTEXT = new Set(${JSON.stringify([...DROP_SUB_TEXT])});
 
   function topLevel(el) {
     let n = el;
@@ -181,6 +190,32 @@ const PAGE_JS = String.raw`
       }
     }
 
+    // ---- 1c) drop a tagline printed under the mark (see DROP_SUB_TEXT)
+    if (SUBTEXT.has(file)) {
+      const BLACK = (c) => /^rgba?\(0,\s*0,\s*0(?:,\s*[\d.]+)?\)$/.test(String(c || ""));
+      let main = null;
+      let area = 0;
+      for (const el of Array.from(root.children)) {
+        if (!(el instanceof SVGGraphicsElement)) continue;
+        if (BLACK(getComputedStyle(el).fill)) continue; // unpainted = candidate copy, not the mark
+        let bb;
+        try { bb = el.getBBox(); } catch { continue; }
+        if (bb.width * bb.height > area) { area = bb.width * bb.height; main = bb; }
+      }
+      if (main) {
+        const floor = main.y + main.height - 1;
+        for (const el of Array.from(root.children)) {
+          if (el.tagName.toLowerCase() !== "path") continue;
+          if (el.getAttribute("fill")) continue; // painted = artwork, keep
+          let bb;
+          try { bb = el.getBBox(); } catch { continue; }
+          if (bb.y < floor) continue;
+          removed.push("tagline:" + bb.height.toFixed(0) + "px");
+          el.remove();
+        }
+      }
+    }
+
     // ---- report only: shapes that fill the canvas (possible backdrop tiles).
     // Nothing else is removed — this exists so a human can eyeball the list.
     const tiles = [];
@@ -217,6 +252,7 @@ const PAGE_JS = String.raw`
     const out = new XMLSerializer().serializeToString(root);
     return {
       file,
+      removed,
       tiles,
       before: { w: vbW, h: vbH },
       box: { x: +bb.x.toFixed(3), y: +bb.y.toFixed(3), w: +bb.width.toFixed(3), h: +bb.height.toFixed(3) },
@@ -263,7 +299,7 @@ let bad = 0;
 for (const r of results) {
   if (r.error) { bad += 1; console.log(pad(r.file, 18) + "ERROR   " + r.error); continue; }
   const parts = [];
-  if (r.removed?.length) parts.push("white plate dropped: " + r.removed.join(","));
+  if (r.removed?.length) parts.push("dropped: " + r.removed.join(","));
   if (REPORT && r.tiles?.length) parts.push("canvas-filling: " + r.tiles.join(","));
   const note = r.skipped ? "already fitted" : parts.join(" | ");
   console.log(pad(r.file, 18) + pad(r.aspect, 9) + pad(r.skipped ? "skip" : "fit", 9) + note);

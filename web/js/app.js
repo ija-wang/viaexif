@@ -4,7 +4,7 @@
  * share / batch-zip. No framework, no build step.
  * ========================================================================== */
 import { readExif, toFields, guessBrand } from "./exif.js";
-import { render, paramLine, toBlob } from "./render.js";
+import { render, paramLine, toBlob, autoBarPos } from "./render.js";
 import { zipStore, download } from "./zip.js";
 import { sniffBytes, kindFromName, isNative, isLiveVideo, stemOf, humanSize } from "./formats.js";
 import { readLiveVideo } from "./live.js";
@@ -21,6 +21,7 @@ const state = {
   active: 0,
   template: "classic",
   sliders: {},
+  font: null,
   format: "image/jpeg",
   quality: 0.92,
   busy: false,
@@ -67,11 +68,14 @@ async function init() {
       state.sliders[tpl.id][key] = s.default;
     }
   }
+  state.font = localStorage.getItem("vx-font") || state.cfg.defaultFont;
 
   buildTemplateCards();
   buildBrandMenu();
   buildFields();
   buildSliders();
+  buildFontSelect();
+  buildBarPos();
   buildFormatSegments();
   bindEvents();
   applyInputFormats();
@@ -81,6 +85,9 @@ async function init() {
   // Brand logos are drawn on the canvas, so they must be decoded up front —
   // a canvas render can't wait for an async image load.
   loadBrandLogos(state.cfg.brands);
+  // Selecting a face before its file is on the wire would measure the fallback
+  // font instead, so the first preview waits for the one it will actually use.
+  applyFont(state.font);
 }
 
 /* -------------------------------------------------------------- boot chrome */
@@ -190,6 +197,7 @@ function buildTemplateCards() {
         n.setAttribute("aria-pressed", String(n.dataset.tpl === tpl.id));
       });
       buildSliders();
+      syncBarPos();
       renderPreview();
     });
     btn.setAttribute("aria-pressed", String(tpl.id === state.template));
@@ -348,6 +356,81 @@ function paintRange(input) {
   input.style.setProperty("--fill", `${(ratio * 100).toFixed(1)}%`);
 }
 
+/* ---------------------------------------------------------------- fonts */
+/**
+ * The face picker. Every entry is a bundled WOFF2 (see tools/build-fonts.py)
+ * except `system`, which is whatever the platform ships.
+ *
+ * The face is applied to the renderer module and the file is awaited before the
+ * preview is redrawn: canvas measures with the *current* font, so drawing one
+ * frame while the face is still downloading silently lays the text out in the
+ * fallback and leaves it there until something else triggers a repaint.
+ */
+function buildFontSelect() {
+  const sel = el("fontSelect");
+  sel.innerHTML = "";
+  for (const f of state.cfg.fonts) {
+    const opt = document.createElement("option");
+    opt.value = f.key;
+    opt.textContent = f.label;
+    opt.style.fontFamily = f.family ? `"${f.family}"` : "inherit";
+    opt.style.fontStyle = f.style || "normal";
+    opt.style.fontWeight = String(f.weight || 400);
+    sel.appendChild(opt);
+  }
+  sel.value = state.font;
+  sel.addEventListener("change", () => applyFont(sel.value));
+}
+
+async function applyFont(key) {
+  const def = state.cfg.fonts.find((f) => f.key === key) || null;
+  state.font = key;
+  localStorage.setItem("vx-font", key);
+  if (def?.family) {
+    try {
+      await document.fonts.load(`${def.style || "normal"} ${def.weight || 400} 20px "${def.family}"`);
+    } catch {
+      /* a missing face just falls through to the platform font */
+    }
+  }
+  renderPreview();
+}
+
+/* ------------------------------------------------------------ bar position */
+/** Each photo carries its own side, defaulted from its orientation. */
+function barPosOf(file) {
+  if (!file) return "bottom";
+  if (file.barPos) return file.barPos;
+  return autoBarPos(file.width, file.height, state.cfg.spec.classic?.autoBarPos);
+}
+
+function buildBarPos() {
+  const seg = el("barPosSeg");
+  seg.innerHTML = "";
+  for (const p of state.cfg.barPositions) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.dataset.pos = p.id;
+    btn.textContent = p.label;
+    btn.title = `白条放在${p.label}侧`;
+    btn.addEventListener("click", () => {
+      const file = activeFile();
+      if (file) file.barPos = p.id;
+      syncBarPos();
+      renderPreview();
+    });
+    seg.appendChild(btn);
+  }
+}
+
+function syncBarPos() {
+  const file = activeFile();
+  const pos = barPosOf(file);
+  el("barPosSeg").querySelectorAll("button").forEach((n) =>
+    n.setAttribute("aria-pressed", String(n.dataset.pos === pos)));
+  el("barPosField").hidden = !file || state.template !== "classic";
+}
+
 /* -------------------------------------------------------------- formats */
 function buildFormatSegments() {
   const seg = el("formatSeg");
@@ -442,7 +525,9 @@ function bindEvents() {
       if (f === src) continue;
       f.fields = { ...src.fields };
       f.brandKey = src.brandKey;
+      f.barPos = src.barPos;
     }
+    syncBarPos();
     toast(`已应用到 ${state.files.length} 张图片`);
   });
 
@@ -557,6 +642,7 @@ async function addFiles(list) {
         exif,
         fields: toFields(exif),
         brandKey: guessBrand(exif, state.cfg.brandHints),
+        barPos: autoBarPos(width, height, state.cfg.spec.classic?.autoBarPos),
         kind: remote ? remote.label : label,
         live: live?.isLive ? live : null,
       });
@@ -662,6 +748,7 @@ function afterFilesChanged() {
   buildQueue();
   syncFieldsToInputs();
   updateBrandTrigger();
+  syncBarPos();
   updateChrome();
   renderPreview();
 }
@@ -694,6 +781,7 @@ function buildQueue() {
       buildQueue();
       syncFieldsToInputs();
       updateBrandTrigger();
+      syncBarPos();
       updateChrome();
       renderPreview();
     });
@@ -739,6 +827,21 @@ function schedulePreview() {
 
 let lastRenderedId = null;
 
+/** Everything the renderer needs for one photo. Preview, download, batch and
+ *  Live Photo export all go through this, so they cannot disagree. */
+function renderOpts(file) {
+  return {
+    template: state.template,
+    spec: state.cfg.spec[state.template],
+    brand: brandOf(file),
+    logoImg: logoFor(brandOf(file)),
+    fields: { ...file.fields, params: paramLine(file.fields) },
+    barPos: barPosOf(file),
+    fontFace: state.cfg.fonts.find((f) => f.key === state.font) || null,
+    ...sliderOpts(),
+  };
+}
+
 function renderPreview() {
   const file = activeFile();
   const canvas = el("preview");
@@ -758,14 +861,7 @@ function renderPreview() {
   }
 
   try {
-    render(canvas, file.preview, {
-      template: state.template,
-      spec: state.cfg.spec[state.template],
-      brand: currentBrand(),
-      logoImg: logoFor(currentBrand()),
-      fields: { ...file.fields, params: paramLine(file.fields) },
-      ...sliderOpts(),
-    });
+    render(canvas, file.preview, renderOpts(file));
   } catch (err) {
     console.error(err);
     toast(err.message || "预览失败", true);
@@ -779,14 +875,7 @@ async function composeActive() {
   const fmt = state.cfg.formats.find((f) => f.id === state.format);
   const blob = await withFullBitmap(file, async (bmp) => {
     const canvas = document.createElement("canvas");
-    render(canvas, bmp, {
-      template: state.template,
-      spec: state.cfg.spec[state.template],
-      brand: currentBrand(),
-      logoImg: logoFor(currentBrand()),
-      fields: { ...file.fields, params: paramLine(file.fields) },
-      ...sliderOpts(),
-    });
+    render(canvas, bmp, renderOpts(file));
     const out = await toOutputBlob(canvas);
     canvas.width = canvas.height = 0;
     return out;
@@ -874,14 +963,7 @@ async function exportZip() {
       setBusy(true, `正在渲染 ${i + 1}/${state.files.length}`);
       const blob = await withFullBitmap(file, async (bmp) => {
         const canvas = document.createElement("canvas");
-        render(canvas, bmp, {
-          template: state.template,
-          spec: state.cfg.spec[state.template],
-          brand: brandOf(file),
-          logoImg: logoFor(brandOf(file)),
-          fields: { ...file.fields, params: paramLine(file.fields) },
-          ...sliderOpts(),
-        });
+        render(canvas, bmp, renderOpts(file));
         const out = await toOutputBlob(canvas);
         canvas.width = canvas.height = 0;
         return out;
@@ -922,14 +1004,7 @@ async function exportLive() {
     const base = outName(file.name, state.template);
     const blob = await withFullBitmap(file, async (bmp) => {
       const canvas = document.createElement("canvas");
-      render(canvas, bmp, {
-        template: state.template,
-        spec: state.cfg.spec[state.template],
-        brand: currentBrand(),
-        logoImg: logoFor(currentBrand()),
-        fields: { ...file.fields, params: paramLine(file.fields) },
-        ...sliderOpts(),
-      });
+      render(canvas, bmp, renderOpts(file));
       const out = await toBlob(canvas, "image/jpeg", state.quality);
       canvas.width = canvas.height = 0;
       return out;

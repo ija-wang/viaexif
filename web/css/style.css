@@ -788,6 +788,33 @@ input[type="range"]::-moz-range-thumb {
   color: var(--text);
   box-shadow: 0 1px 3px rgba(0, 0, 0, .25), inset 0 0 0 1px var(--line);
 }
+/* A .seg inside a .field is a control, not a section — no trailing gap. */
+.field .seg { margin-bottom: 0; }
+.seg-sides button { padding: 7px 4px; font-size: 12.5px; }
+
+/* native select dressed to match the text inputs (a custom menu would need
+ * its own keyboard handling for zero gain: four options, one line each) */
+.pick { position: relative; display: flex; align-items: center; }
+.pick-input {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  padding: 7px 30px 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color .18s, box-shadow .18s;
+}
+.pick-input:hover { border-color: var(--line-strong); }
+.pick-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.pick > svg { position: absolute; right: 10px; color: var(--muted); pointer-events: none; }
 
 .export-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
